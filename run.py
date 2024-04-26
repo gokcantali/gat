@@ -1,4 +1,9 @@
 # Importing necessary libraries and modules for the project
+import sklearn
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import OneHotEncoder
+from gat.encoder import ip_encoder, string_encoder, number_normalizer
+
 from gat.load_data import load_data  # Custom function to load data
 from sklearn.model_selection import train_test_split  # Splitting data
 from sklearn.metrics import confusion_matrix, precision_score, recall_score, f1_score, accuracy_score
@@ -22,56 +27,68 @@ y_int = y.map(mapping).astype(int)
 X_train, X_test, y_train, y_test = train_test_split(
     X, y_int, test_size=0.25, stratify=y_int, random_state=42)
 
-# Function to convert DataFrame to graph format suitable for GAT
+
 def convert_to_graph(X, y):
-    # Converts feature data to numeric type, handling non-numeric entries
-    # This is necessary because neural networks require numerical input for
-    # computations, and any non-numeric data would cause errors during training.
-    X_cleaned = X.apply(pd.to_numeric, errors='coerce').fillna(0)
 
-    # Converts the cleaned DataFrame to a tensor, which is the required format
-    # for data in PyTorch. This tensor will represent the node features in the graph.
-    X_tensor = torch.tensor(X_cleaned.values, dtype=torch.float)
+    encoder_map = {
+        'ip_source': 'ip classes to int',
+        'ip_destination': 'ip classes to int',
+        'source_pod_label': 'hash',
+        'destination_pod_label': 'hash',
+        'source_namespace_label': 'hash',
+        'destination_namespace_label': 'hash',
+        'source_port_label': 'string to int',
+        'destination_port_label': 'string to int',
+        'ack_flag': 'stringbool to int',
+        'psh_flag': 'stringbool to int'
+    }   
+    
+    
+    X = ip_encoder(X, 'ip_source')
+    X = ip_encoder(X, 'ip_destination')
+    X = string_encoder(X, 'source_pod_label')
+    X = string_encoder(X, 'destination_pod_label')
+    X = string_encoder(X, 'source_namespace_label')
+    X = string_encoder(X, 'destination_namespace_label')
+    X = number_normalizer(X, 'source_port_label')
+    X = number_normalizer(X, 'destination_port_label')
 
-    # Converts the label data to a tensor, ensuring it's in long format for
-    # compatibility with classification tasks in PyTorch.
+
+    # Mapping for converting y string values to integers
+    mapping = {'False': 0, 'True': 1}
+    X['ack_flag'] = X['ack_flag'].map(mapping).astype(int)
+    X['psh_flag'] = X['psh_flag'].map(mapping).astype(int)
+    
+    # Create a DataFrame with the correct column names
+    X = X.apply(pd.to_numeric, errors='coerce').fillna(0)
+
+    # Convert the DataFrame to a tensor
+    X_tensor = torch.tensor(X.values, dtype=torch.float)
+
+    # Convert the label data to a tensor
     y_tensor = torch.tensor(y.values, dtype=torch.long)
 
-    # Total number of nodes calculated from the number of rows in the tensor.
-    # This is used to initialize the masks that determine which nodes are used for
-    # training, validation, and testing.
+    # Total number of nodes calculated from the number of rows in the tensor
     num_nodes = len(X_tensor)
 
-    # Initializes masks as boolean tensors for training, testing, and validation.
-    # Each mask is of the same length as the number of nodes, initially set to False.
+    # Initialize masks as boolean tensors for training, testing, and validation
     masks = [torch.zeros(num_nodes, dtype=torch.bool) for _ in range(3)]
-
-    # Defines limits for each mask based on desired proportions:
-    # - 80% of data for training,
-    # - additional 10% for testing,
-    # - remaining 10% for validation.
     limits = [int(0.8 * num_nodes), int(0.9 * num_nodes), num_nodes]
 
-    # Assigns True up to the specified limit for each mask and shuffles it.
-    # Shuffling ensures that the selection of nodes for training, testing, and
-    # validation is randomized, which helps in reducing bias and overfitting.
+    # Assign True up to the specified limit for each mask and shuffle
     for mask, limit in zip(masks, limits):
         mask[:limit] = True
         np.random.shuffle(mask.numpy())
 
-    # Defines the edge index, which specifies the connections between nodes.
-    # Here, a simple bi-directional connection between two consecutive nodes is used.
-    # This might need to be customized based on the actual topology of the graph
-    # relevant to your specific dataset or domain problem.
-    edge_index = torch.tensor([[0, 1], [1, 0]], dtype=torch.long)
+    # Defines a simple bi-directional connection between two consecutive nodes
+    edge_index = torch.tensor([[i, i+1] for i in range(num_nodes-1) for _ in (0, 1)], dtype=torch.long).t().contiguous()
 
-    # Returns a Data object containing:
-    # - node features (x),
-    # - edge connections (edge_index),
-    # - labels (y),
-    # - and the three masks specifying which nodes to use for training, testing, and validation.
+    # Return a Data object containing node features, edge connections, labels, and masks
     return Data(x=X_tensor, edge_index=edge_index, y=y_tensor,
                 train_mask=masks[0], test_mask=masks[1], val_mask=masks[2])
+
+    # Note: This function assumes that X is a DataFrame and y is a Series or similar.
+
 
 # Convert both training and testing data to graph format
 train_data = convert_to_graph(X_train, y_train)
@@ -80,10 +97,12 @@ test_data = convert_to_graph(X_test, y_test)
 # Initialize GAT model specifying the number of features and classes
 model = GAT(num_features=train_data.num_features, num_classes=len(np.unique(y_train)))
 
+# TODO: try other optimizers
 # Define optimizer with specific learning rate and weight decay for regularization
 optimizer = torch.optim.Adam(model.parameters(), lr=0.005, weight_decay=5e-4)
 
 # Define training function to update model weights
+# TODO: move!
 def train(model, data):
     model.train()  # Set model to training mode
     optimizer.zero_grad()  # Clear previous gradients
