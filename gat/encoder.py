@@ -78,3 +78,9 @@ def number_normalizer(df, column_name):
     df = df.drop([column_name, f'{column_name}_int'], axis=1)
 
     return df
+
+def boolean_string_to_int(df, column):
+    # Convert "True"/"False" strings to integers
+    mapping = {'False': 0, 'True': 1}
+    df[column] = df[column].map(mapping).astype(int)
+    return df
