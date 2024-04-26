@@ -18,26 +18,58 @@ mapping = {'False': 0, 'True': 1}
 y_int = y.map(mapping).astype(int)
 
 # Now you can proceed to split the data
+# stratify makes sure that the distribution of classes is similar in both train and test sets
 X_train, X_test, y_train, y_test = train_test_split(
     X, y_int, test_size=0.25, stratify=y_int, random_state=42)
 
 # Function to convert DataFrame to graph format suitable for GAT
 def convert_to_graph(X, y):
     # Converts feature data to numeric type, handling non-numeric entries
+    # This is necessary because neural networks require numerical input for
+    # computations, and any non-numeric data would cause errors during training.
     X_cleaned = X.apply(pd.to_numeric, errors='coerce').fillna(0)
-    X_tensor = torch.tensor(X_cleaned.values, dtype=torch.float)  # To tensor
-    y_tensor = torch.tensor(y.values, dtype=torch.long)  # Labels to tensor
-    num_nodes = len(X_tensor)  # Total number of nodes
-    
-    # Initialize masks for training, testing, validation
+
+    # Converts the cleaned DataFrame to a tensor, which is the required format
+    # for data in PyTorch. This tensor will represent the node features in the graph.
+    X_tensor = torch.tensor(X_cleaned.values, dtype=torch.float)
+
+    # Converts the label data to a tensor, ensuring it's in long format for
+    # compatibility with classification tasks in PyTorch.
+    y_tensor = torch.tensor(y.values, dtype=torch.long)
+
+    # Total number of nodes calculated from the number of rows in the tensor.
+    # This is used to initialize the masks that determine which nodes are used for
+    # training, validation, and testing.
+    num_nodes = len(X_tensor)
+
+    # Initializes masks as boolean tensors for training, testing, and validation.
+    # Each mask is of the same length as the number of nodes, initially set to False.
     masks = [torch.zeros(num_nodes, dtype=torch.bool) for _ in range(3)]
+
+    # Defines limits for each mask based on desired proportions:
+    # - 80% of data for training,
+    # - additional 10% for testing,
+    # - remaining 10% for validation.
     limits = [int(0.8 * num_nodes), int(0.9 * num_nodes), num_nodes]
+
+    # Assigns True up to the specified limit for each mask and shuffles it.
+    # Shuffling ensures that the selection of nodes for training, testing, and
+    # validation is randomized, which helps in reducing bias and overfitting.
     for mask, limit in zip(masks, limits):
         mask[:limit] = True
-        np.random.shuffle(mask.numpy())  # Shuffle masks to randomize selection
+        np.random.shuffle(mask.numpy())
 
-    # Define edge index for creating graph connections (simple chain for example)
+    # Defines the edge index, which specifies the connections between nodes.
+    # Here, a simple bi-directional connection between two consecutive nodes is used.
+    # This might need to be customized based on the actual topology of the graph
+    # relevant to your specific dataset or domain problem.
     edge_index = torch.tensor([[0, 1], [1, 0]], dtype=torch.long)
+
+    # Returns a Data object containing:
+    # - node features (x),
+    # - edge connections (edge_index),
+    # - labels (y),
+    # - and the three masks specifying which nodes to use for training, testing, and validation.
     return Data(x=X_tensor, edge_index=edge_index, y=y_tensor,
                 train_mask=masks[0], test_mask=masks[1], val_mask=masks[2])
 
