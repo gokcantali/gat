@@ -8,4 +8,6 @@ def load_data(file_path: Path = Path('data/traces.csv')):
     header = data.iloc[0]
     data = data.drop(0)
     data.columns = header
-    return data.drop(columns=['is_anomaly']), data['is_anomaly'], header
+    X = data.drop(columns=['is_anomaly'])
+    y = data['is_anomaly']
+    return X, y

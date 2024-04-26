@@ -27,11 +27,8 @@ class GAT(torch.nn.Module):
         self.optimizer.step()  # Update model weights
         return loss.item()
 
-    # Define testing function to evaluate model performance
     def test_model(self, data):
         self.eval()  # Set model to evaluation mode
         out = self(data)  # Forward pass
         _, pred = out.max(dim=1)  # Get predictions
-        correct = pred[data.test_mask].eq(data.y[data.test_mask]).sum().item()
-        acc = correct / int(data.test_mask.sum())  # Calculate accuracy
-        return acc, pred  # Return accuracy and predictions
+        return pred  # Return accuracy and predictions

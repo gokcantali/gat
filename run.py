@@ -19,7 +19,7 @@ TEST_SIZE = 0.25
 RANDOM_STATE = 42
 
 def prepare_data():
-    X, y, header = load_data()
+    X, y = load_data()
     y = boolean_string_to_int(y)
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=TEST_SIZE, stratify=y, random_state=RANDOM_STATE)
@@ -41,7 +41,7 @@ def train_model(model, train_data):
         print(f'Epoch {epoch+1}, Loss: {loss:.4f}')
 
 def evaluate_model(model, test_data):
-    accuracy, pred = model.test_model(test_data)
+    pred = model.test_model(test_data)
     all_labels = np.unique(test_data.y.numpy())
     metrics = {
         'conf_matrix': confusion_matrix(
