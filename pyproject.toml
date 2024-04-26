@@ -1,0 +1,18 @@
+[tool.poetry]
+name = "gat"
+version = "0.1.0"
+description = ""
+authors = ["Matthias Osswald <matthias@busykoala.io>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+pandas = "^2.2.2"
+scikit-learn = "^1.4.2"
+torch = "^2.3.0"
+torch-geometric = "^2.5.3"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
