@@ -1,6 +1,7 @@
+from pathlib import Path
+
 import pandas as pd
 
-from pathlib import Path
 
 def load_data(file_path: Path = Path('data/traces.csv')):
     data = pd.read_csv(file_path, header=None, low_memory=False)

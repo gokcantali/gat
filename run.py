@@ -1,18 +1,20 @@
 # Importing necessary libraries and modules for the project
-import sklearn
-from sklearn.compose import ColumnTransformer
-from sklearn.preprocessing import OneHotEncoder
-from gat.encoder import ip_encoder, string_encoder, number_normalizer
-
-from gat.load_data import load_data  # Custom function to load data
-from sklearn.model_selection import train_test_split  # Splitting data
-from sklearn.metrics import confusion_matrix, precision_score, recall_score, f1_score, accuracy_score
-from torch_geometric.data import Data  # PyTorch Geometric data handling
-import torch
-import torch.nn.functional as F  # PyTorch's functional interface
-from gat.model import GAT  # Graph Attention Network model from the gat package
-import pandas as pd
 import numpy as np
+import pandas as pd
+import torch
+from sklearn.metrics import (
+    accuracy_score,
+    confusion_matrix,
+    f1_score,
+    precision_score,
+    recall_score,
+)
+from sklearn.model_selection import train_test_split  # Splitting data
+from torch_geometric.data import Data  # PyTorch Geometric data handling
+
+from gat.encoder import ip_encoder, number_normalizer, string_encoder
+from gat.load_data import load_data  # Custom function to load data
+from gat.model import GAT  # Graph Attention Network model from the gat package
 
 # Load data using a custom function from the gat package
 X, y, header = load_data()

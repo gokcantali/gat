@@ -3,6 +3,7 @@
 import pandas as pd
 import torch
 
+
 def ip_encoder(df, column_name):
     def encode_ip(ip_address):
         # Check if the address is IPv4 or IPv6
