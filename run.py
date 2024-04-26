@@ -12,20 +12,10 @@ import numpy as np
 # Load data using a custom function from the gat package
 X, y, header = load_data()
 
-# Display unique values of labels and their data types for inspection
-print(y.unique())
-print(y.dtypes)
-
-# Mapping for converting boolean or string labels to integers
-# Define mapping for boolean or string labels to integers
-mapping = {'False': 0, 'True': 1, False: 0, True: 1}
-
-# Apply mapping and convert to integer
-# This approach avoids the deprecated downcasting behavior by not using replace for type conversion
-y_mapped = y.map(mapping)  # Map the values using the mapping dictionary
-
-# Ensure all labels are now integers and handle any unmapped values (if necessary)
-y_int = y_mapped.astype(int)  # Convert mapped values to integer explicitly
+# Mapping for converting y string values to integers
+mapping = {'False': 0, 'True': 1}
+# Apply the mapping and directly convert to integer
+y_int = y.map(mapping).astype(int)
 
 # Now you can proceed to split the data
 X_train, X_test, y_train, y_test = train_test_split(
