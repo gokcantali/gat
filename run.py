@@ -17,11 +17,17 @@ print(y.unique())
 print(y.dtypes)
 
 # Mapping for converting boolean or string labels to integers
-mapping = {'False': 0, 'True': 1, False: 0, True: 1}  # Adjust based on data
-y_int = y.replace(mapping).astype(int)  # Apply mapping and convert to integer
+# Define mapping for boolean or string labels to integers
+mapping = {'False': 0, 'True': 1, False: 0, True: 1}
 
-# Split the dataset into training and testing sets, ensuring each class is
-# represented proportionally in both sets using stratification
+# Apply mapping and convert to integer
+# This approach avoids the deprecated downcasting behavior by not using replace for type conversion
+y_mapped = y.map(mapping)  # Map the values using the mapping dictionary
+
+# Ensure all labels are now integers and handle any unmapped values (if necessary)
+y_int = y_mapped.astype(int)  # Convert mapped values to integer explicitly
+
+# Now you can proceed to split the data
 X_train, X_test, y_train, y_test = train_test_split(
     X, y_int, test_size=0.25, stratify=y_int, random_state=42)
 
