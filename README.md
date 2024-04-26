@@ -15,8 +15,8 @@ poetry run python run.py
 ## Format
 
 ```bash
-poetry run ruff . --fix
+poetry run ruff check . --fix
 
 # nix version
-ruff . --fix
+ruff check . --fix
 ```
