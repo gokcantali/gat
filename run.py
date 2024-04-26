@@ -94,40 +94,15 @@ def convert_to_graph(X, y):
 train_data = convert_to_graph(X_train, y_train)
 test_data = convert_to_graph(X_test, y_test)
 
-# Initialize GAT model specifying the number of features and classes
-model = GAT(num_features=train_data.num_features, num_classes=len(np.unique(y_train)))
-
-# TODO: try other optimizers
-# Define optimizer with specific learning rate and weight decay for regularization
-optimizer = torch.optim.Adam(model.parameters(), lr=0.005, weight_decay=5e-4)
-
-# Define training function to update model weights
-# TODO: move!
-def train(model, data):
-    model.train()  # Set model to training mode
-    optimizer.zero_grad()  # Clear previous gradients
-    out = model(data)  # Forward pass
-    loss = F.nll_loss(out[data.train_mask], data.y[data.train_mask])  # Compute loss
-    loss.backward()  # Backpropagate the loss
-    optimizer.step()  # Update model weights
-    return loss.item()
-
-# Define testing function to evaluate model performance
-def test(model, data):
-    model.eval()  # Set model to evaluation mode
-    out = model(data)  # Forward pass
-    _, pred = out.max(dim=1)  # Get predictions
-    correct = pred[data.test_mask].eq(data.y[data.test_mask]).sum().item()
-    acc = correct / int(data.test_mask.sum())  # Calculate accuracy
-    return acc, pred  # Return accuracy and predictions
+model = GAT(torch.optim.Adam, num_features=train_data.num_features, num_classes=len(np.unique(y_train)))
 
 # Train model for a specified number of epochs
 for epoch in range(20):
-    loss = train(model, train_data)
+    loss = model.train_model(train_data)
     print(f'Epoch {epoch+1}, Loss: {loss:.4f}')
 
 # Test the model and capture predictions
-accuracy, pred = test(model, test_data)
+accuracy, pred = model.test_model(test_data)
 
 # Compute confusion matrix and additional metrics
 all_labels = np.unique(y_int)  # Ensure all_labels is an integer array
