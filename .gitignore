@@ -31,3 +31,4 @@ venv.bak/
 .vscode/
 
 /data/*.csv
+loss_per_epoch.png

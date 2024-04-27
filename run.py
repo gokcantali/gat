@@ -1,3 +1,4 @@
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from sklearn.metrics import (
@@ -35,10 +36,23 @@ def initialize_model(train_data, y_train):
     )
     return model
 
+def plot_loss(loss_values):
+    plt.figure(figsize=(10, 5))
+    plt.plot(range(1, EPOCHS+1), loss_values, marker='o', linestyle='-', color='b')
+    plt.title('Loss per Epoch')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.grid(True)
+    plt.savefig('loss_per_epoch.png')
+    plt.close()
+
 def train_model(model, train_data):
+    loss_values = []
     for epoch in range(EPOCHS):
         loss = model.train_model(train_data)
+        loss_values.append(loss)
         print(f'Epoch {epoch+1}, Loss: {loss:.4f}')
+    plot_loss(loss_values)
 
 def evaluate_model(model, test_data):
     pred = model.test_model(test_data)
