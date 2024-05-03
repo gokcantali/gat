@@ -11,7 +11,30 @@ from gat.encoder import (
 )
 
 
+def construct_port_scan_label(X):
+    X['timestamp'] = pd.to_datetime(X['timestamp'], utc=True)
+    X.sort_values(by=['ip_source', 'timestamp'], inplace=True)
+    time_window = '5T'  
+
+    def diversity_index(x):
+        if not isinstance(x, pd.Series):
+            x = pd.Series(x)
+        return x.nunique() / len(x) if len(x) > 0 else 0
+
+    X.set_index('timestamp', inplace=True)
+    results = X.groupby('ip_source')['destination_port_label'].rolling(
+        window=time_window).apply(diversity_index, raw=False)
+    X['diversity_index'] = results.values
+    X.reset_index(inplace=True)
+    X.drop(columns=['timestamp'], inplace=True)
+    X['diversity_index'] = X['diversity_index'].fillna(0)
+    # shuffle
+    X = X.sample(frac=1).reset_index(drop=True)
+    return X
+
+
 def convert_to_graph(X, y):
+    X = construct_port_scan_label(X)
     encoder_map = {
         'ip_source': ip_encoder,
         'ip_destination': ip_encoder,
