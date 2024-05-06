@@ -52,9 +52,5 @@ def number_normalizer(df, column_name):
     return df
 
 def boolean_string_to_int(df, column = None):
-    mapping = {'False': 0, 'True': 1}
-    if column:
-        df[column] = df[column].map(mapping).astype(int)
-    else:
-        df = df.map(mapping).astype(int)
+    df[column] = df[column].astype(int)
     return df
