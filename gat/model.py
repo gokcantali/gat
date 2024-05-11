@@ -16,25 +16,31 @@ from gat.data_models import Metrics
 
 
 class GAT(torch.nn.Module):
-    def __init__(self, optimizer, num_features, num_classes, weight_decay=1e-4, dropout=0.5, hidden_dim=16):
+    def __init__(
+            self, optimizer, num_features, num_classes, weight_decay=5e-4, dropout=0.5,
+            hidden_dim=16, epochs=30, lr=0.005, patience=10
+    ):
         super(GAT, self).__init__()
+        self.epochs = epochs
+        self.patience = patience
         self.conv1 = GATConv(num_features, hidden_dim, heads=8, dropout=dropout)
         self.bn1 = nn.BatchNorm1d(hidden_dim * 8)
         self.conv2 = GATConv(hidden_dim * 8, hidden_dim, heads=8, dropout=dropout)
         self.bn2 = nn.BatchNorm1d(hidden_dim * 8)
         self.conv3 = GATConv(hidden_dim * 8, num_classes, heads=1, concat=True, dropout=dropout)
-        self.optimizer = optimizer(self.parameters(), lr=0.005, weight_decay=weight_decay)
-        self.scheduler = torch.optim.lr_scheduler.OneCycleLR(self.optimizer, max_lr=0.01, steps_per_epoch=1, epochs=100)
+        self.dropout = nn.Dropout(p=dropout)
+        self.optimizer = optimizer(self.parameters(), lr=lr, weight_decay=weight_decay)
+        self.scheduler = torch.optim.lr_scheduler.OneCycleLR(self.optimizer, max_lr=0.01, steps_per_epoch=1, epochs=self.epochs)
 
     def forward(self, data):
         x, edge_index = data.x, data.edge_index
-        x = F.dropout(x, p=0.5, training=self.training)
+        x = self.dropout(x)
         x = F.elu(self.conv1(x, edge_index))
         x = self.bn1(x)
-        x = F.dropout(x, p=0.5, training=self.training)
+        x = self.dropout(x)
         x = F.elu(self.conv2(x, edge_index))
         x = self.bn2(x)
-        x = F.dropout(x, p=0.5, training=self.training)
+        x = self.dropout(x)
         x = self.conv3(x, edge_index)
         return F.log_softmax(x, dim=1)
 
@@ -72,12 +78,12 @@ class GAT(torch.nn.Module):
 
         return val_loss, val_accuracy, val_precision, val_recall, val_f1, cm
 
-    def train_model(self, train_data, val_data, epochs, patience=10):
+    def train_model(self, train_data, val_data):
         metrics = Metrics()
         best_val_loss = float('inf')
         patience_counter = 0
 
-        for epoch in range(epochs):
+        for epoch in range(self.epochs):
             start_time = time.time()
             train_loss, train_accuracy, train_precision, train_recall, train_f1 = self.train_epoch(train_data)
             val_loss, val_accuracy, val_precision, val_recall, val_f1, cm = self.validate_epoch(val_data)
@@ -110,7 +116,7 @@ class GAT(torch.nn.Module):
                 torch.save(self.state_dict(), 'best_model.pth')
             else:
                 patience_counter += 1
-                if patience_counter >= patience:
+                if patience_counter >= self.patience:
                     print("Early stopping")
                     break
 

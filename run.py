@@ -8,9 +8,17 @@ from gat.converter import convert_to_graph
 from gat.model import GAT
 from gat.preprocesser import preprocess_df, preprocess_X, preprocess_y
 
-EPOCHS = 30
 TEST_SIZE = 0.25
 RANDOM_STATE = 42
+
+class Config:
+    optimizer = torch.optim.AdamW
+    lr = 0.005
+    weight_decay = 5e-4
+    epochs = 30
+    patience = 10
+    hidden_dim = 16
+    dropout = 0.5
 
 def split_data():
     df = preprocess_df()
@@ -23,10 +31,17 @@ def split_data():
     return train_data, test_data, y_train
 
 def initialize_model(train_data, y_train):
+    config = Config()
     model = GAT(
-        torch.optim.AdamW,
+        optimizer=config.optimizer,
         num_features=train_data.num_features,
-        num_classes=len(np.unique(y_train))
+        num_classes=len(np.unique(y_train)),
+        weight_decay=config.weight_decay,
+        dropout=config.dropout,
+        hidden_dim=config.hidden_dim,
+        epochs=config.epochs,
+        lr=config.lr,
+        patience=config.patience
     )
     return model
 
@@ -35,4 +50,4 @@ if not os.path.exists('./results'):
     os.makedirs('./results')
 train_data, test_data, y_train = split_data()
 model = initialize_model(train_data, y_train)
-model.train_model(train_data, test_data, EPOCHS)
+model.train_model(train_data, test_data)
