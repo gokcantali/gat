@@ -10,18 +10,20 @@ from sklearn.metrics import (
 )
 from sklearn.model_selection import train_test_split
 
-from gat.converter import convert_to_graph
-from gat.encoder import boolean_string_to_int
+from gat.converter import convert_to_graph, construct_port_scan_label
 from gat.load_data import load_data
 from gat.model import GAT
 
-EPOCHS = 20
+EPOCHS = 200
 TEST_SIZE = 0.25
 RANDOM_STATE = 42
 
-def prepare_data():
-    X, y = load_data()
-    y = boolean_string_to_int(y)
+def split_data():
+    df = load_data()
+    df = construct_port_scan_label(df)
+    df['is_anomaly'] = df['is_anomaly'].replace({'True': 1, 'False': 0}).astype(int)
+    X = df.drop(columns=['is_anomaly'])
+    y = df['is_anomaly']
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=TEST_SIZE, stratify=y, random_state=RANDOM_STATE)
     train_data = convert_to_graph(X_train, y_train)
@@ -78,7 +80,7 @@ def print_metrics(metrics):
     print(f"Recall: {metrics['recall']:.4f}")
     print(f"F1 Score: {metrics['f1']:.4f}")
 
-train_data, test_data, y_train = prepare_data()
+train_data, test_data, y_train = split_data()
 model = initialize_model(train_data, y_train)
 train_model(model, train_data)
 metrics = evaluate_model(model, test_data)

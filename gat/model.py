@@ -22,7 +22,7 @@ class GAT(torch.nn.Module):
         self.train()  # Set model to training mode
         self.optimizer.zero_grad()  # Clear previous gradients
         out = self(data)  # Forward pass
-        loss = F.nll_loss(out[data.train_mask], data.y[data.train_mask])  # Compute loss
+        loss = F.nll_loss(out, data.y)
         loss.backward()  # Backpropagate the loss
         self.optimizer.step()  # Update model weights
         return loss.item()
