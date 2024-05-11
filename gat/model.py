@@ -1,5 +1,7 @@
 import time
+
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 from sklearn.metrics import (
     confusion_matrix,
@@ -8,23 +10,32 @@ from sklearn.metrics import (
     recall_score,
 )
 from torch_geometric.nn import GATConv
+
 from gat.analysis import plot_metrics, print_epoch_stats
 from gat.data_models import Metrics
 
+
 class GAT(torch.nn.Module):
-    def __init__(self, optimizer, num_features, num_classes, weight_decay=5e-4):
+    def __init__(self, optimizer, num_features, num_classes, weight_decay=1e-4, dropout=0.5, hidden_dim=16):
         super(GAT, self).__init__()
-        self.conv1 = GATConv(num_features, 8, heads=8, dropout=0.6)
-        self.conv2 = GATConv(8 * 8, num_classes, heads=1, concat=True, dropout=0.6)
+        self.conv1 = GATConv(num_features, hidden_dim, heads=8, dropout=dropout)
+        self.bn1 = nn.BatchNorm1d(hidden_dim * 8)
+        self.conv2 = GATConv(hidden_dim * 8, hidden_dim, heads=8, dropout=dropout)
+        self.bn2 = nn.BatchNorm1d(hidden_dim * 8)
+        self.conv3 = GATConv(hidden_dim * 8, num_classes, heads=1, concat=True, dropout=dropout)
         self.optimizer = optimizer(self.parameters(), lr=0.005, weight_decay=weight_decay)
-        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, patience=5)
+        self.scheduler = torch.optim.lr_scheduler.OneCycleLR(self.optimizer, max_lr=0.01, steps_per_epoch=1, epochs=100)
 
     def forward(self, data):
         x, edge_index = data.x, data.edge_index
-        x = F.dropout(x, p=0.6, training=self.training)
+        x = F.dropout(x, p=0.5, training=self.training)
         x = F.elu(self.conv1(x, edge_index))
-        x = F.dropout(x, p=0.6, training=self.training)
-        x = self.conv2(x, edge_index)
+        x = self.bn1(x)
+        x = F.dropout(x, p=0.5, training=self.training)
+        x = F.elu(self.conv2(x, edge_index))
+        x = self.bn2(x)
+        x = F.dropout(x, p=0.5, training=self.training)
+        x = self.conv3(x, edge_index)
         return F.log_softmax(x, dim=1)
 
     def train_epoch(self, data):
@@ -89,10 +100,10 @@ class GAT(torch.nn.Module):
                 train_precision, train_recall, train_f1, val_precision, val_recall, val_f1, cm)
 
             # Adjust learning rate based on validation loss
-            self.scheduler.step(val_loss)
+            self.scheduler.step()
             print(f'Epoch {epoch + 1}, Current Learning Rate: {self.scheduler.optimizer.param_groups[0]["lr"]}')
 
-            # early stopping check to prevent overfitting
+            # Early stopping check to prevent overfitting
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
                 patience_counter = 0

@@ -24,7 +24,7 @@ def split_data():
 
 def initialize_model(train_data, y_train):
     model = GAT(
-        torch.optim.Adam,
+        torch.optim.AdamW,
         num_features=train_data.num_features,
         num_classes=len(np.unique(y_train))
     )
