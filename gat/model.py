@@ -70,8 +70,10 @@ class GAT(torch.nn.Module):
 
         for epoch in range(epochs):
             start_time = time.time()
-            train_loss, train_accuracy, train_precision, train_recall, train_f1 = self.train_epoch(train_data)
-            val_loss, val_accuracy, val_precision, val_recall, val_f1, cm = self.validate_epoch(val_data)
+            train_loss, train_accuracy, train_precision, train_recall, train_f1 = self.train_epoch(
+                train_data)
+            val_loss, val_accuracy, val_precision, val_recall, val_f1, cm = self.validate_epoch(
+                val_data)
 
             metrics.train_loss.append(train_loss)
             metrics.val_loss.append(val_loss)
@@ -86,8 +88,9 @@ class GAT(torch.nn.Module):
             metrics.epoch_values.append(epoch + 1)
 
             epoch_time = time.time() - start_time
-            print_epoch_stats(epoch + 1, epoch_time, train_loss, train_accuracy, val_loss, val_accuracy,
-                                    train_precision, train_recall, train_f1, val_precision, val_recall, val_f1, cm)
+            print_epoch_stats(
+                epoch + 1, epoch_time, train_loss, train_accuracy, val_loss, val_accuracy,
+                train_precision, train_recall, train_f1, val_precision, val_recall, val_f1, cm)
 
             # early stopping check to prevent overfitting
             if val_loss < best_val_loss:
