@@ -37,7 +37,7 @@ def create_knn_graph(X, k=5):
 
 
 def convert_to_graph(X, y):
-    X = X[['diversity_index']]
+    #X = X[['diversity_index']]
     edge_index = create_knn_graph(X)
     data = Data(x=torch.tensor(X.values, dtype=torch.float), 
                       edge_index=edge_index, 

@@ -13,17 +13,16 @@ from sklearn.model_selection import train_test_split
 from gat.converter import convert_to_graph, construct_port_scan_label
 from gat.load_data import load_data
 from gat.model import GAT
+from gat.preprocesser import preprocess_df, preprocess_X, preprocess_y
 
-EPOCHS = 200
+EPOCHS = 30
 TEST_SIZE = 0.25
 RANDOM_STATE = 42
 
 def split_data():
-    df = load_data()
-    df = construct_port_scan_label(df)
-    df['is_anomaly'] = df['is_anomaly'].replace({'True': 1, 'False': 0}).astype(int)
-    X = df.drop(columns=['is_anomaly'])
-    y = df['is_anomaly']
+    df = preprocess_df()
+    X = preprocess_X(df)
+    y = preprocess_y(df)
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=TEST_SIZE, stratify=y, random_state=RANDOM_STATE)
     train_data = convert_to_graph(X_train, y_train)
