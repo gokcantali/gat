@@ -5,8 +5,10 @@ from torch_geometric.data import Data
 
 
 def create_knn_graph(X, k=5):
-    A = kneighbors_graph(X.values, n_neighbors=k, mode='connectivity', include_self=True)
-    A = A.tocoo()  # Convert to COO format
+    A = kneighbors_graph(
+        X.values, n_neighbors=k, mode='connectivity',
+        include_self=True, n_jobs=-1)
+    A = A.tocoo()
     row = A.row.astype(np.int64)
     col = A.col.astype(np.int64)
     edge_index = np.vstack([row, col])
