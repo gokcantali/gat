@@ -1,5 +1,6 @@
 import torch
 import torch.nn.functional as F
+from sklearn.metrics import f1_score, precision_score, recall_score
 from torch_geometric.nn import GATConv
 
 
@@ -30,7 +31,11 @@ class GAT(torch.nn.Module):
         correct = preds.eq(data.y).sum().item()
         accuracy = correct / data.y.size(0)
 
-        return loss.item(), accuracy
+        precision = precision_score(data.y.cpu(), preds.cpu(), average='weighted')
+        recall = recall_score(data.y.cpu(), preds.cpu(), average='weighted')
+        f1 = f1_score(data.y.cpu(), preds.cpu(), average='weighted')
+
+        return loss.item(), accuracy, precision, recall, f1
 
     def test_model(self, data):
         self.eval()
