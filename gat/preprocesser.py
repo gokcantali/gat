@@ -1,4 +1,6 @@
-﻿import pandas as pd
+﻿import multiprocessing as mp
+
+import pandas as pd
 
 from gat.analysis import get_data_insights
 from gat.encoder import (
@@ -10,22 +12,37 @@ from gat.encoder import (
 from gat.load_data import load_data
 
 
+def diversity_index(series):
+    return series.nunique() / len(series) if len(series) > 0 else 0
+
+def process_group(group, time_window='10s'):
+    group = group.set_index('timestamp')
+    result = group['destination_port_label'].rolling(window=time_window).apply(diversity_index)
+    group['diversity_index'] = result.values
+    group.reset_index(inplace=True)
+    return group
+
+def process_chunk(chunk, time_window):
+    chunk_groups = chunk.groupby('ip_source')
+    processed_groups = []
+    for _, group in chunk_groups:
+        processed_groups.append(process_group(group, time_window))
+    return pd.concat(processed_groups)
+
+def split_dataframe(df, num_chunks):
+    chunk_size = len(df) // num_chunks
+    chunks = [df.iloc[i * chunk_size:(i + 1) * chunk_size] for i in range(num_chunks)]
+    return chunks
+
 def construct_port_scan_label(df):
     df['timestamp'] = pd.to_datetime(df['timestamp'], utc=True)
     df.sort_values(by=['ip_source', 'timestamp'], inplace=True)
+    num_chunks = mp.cpu_count()
+    chunks = split_dataframe(df, num_chunks)
     time_window = '10s'
-
-    def diversity_index(df):
-        if not isinstance(df, pd.Series):
-            df = pd.Series(df)
-        return df.nunique() / len(df) if len(df) > 0 else 0
-
-    df.set_index('timestamp', inplace=True)
-    results = df.groupby('ip_source')['destination_port_label'].rolling(
-        window=time_window).apply(diversity_index, raw=False)
-    df['diversity_index'] = results.values
-    df.reset_index(inplace=True)
-    df.drop(columns=['timestamp'], inplace=True)
+    with mp.Pool(processes=num_chunks) as pool:
+        results = pool.starmap(process_chunk, [(chunk, time_window) for chunk in chunks])
+    df = pd.concat(results, ignore_index=True)
     df['diversity_index'] = df['diversity_index'].fillna(0)
     df = df.sample(frac=1).reset_index(drop=True)
     return df
