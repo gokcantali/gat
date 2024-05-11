@@ -29,6 +29,15 @@ def get_data_insights(df, file_path):
         f.write("----------------------------------------------\n")
         f.write(df.kurt().to_string())
 
+def print_epoch_stats(epoch, epoch_time, train_loss, train_accuracy, val_loss, val_accuracy,
+                      train_precision, train_recall, train_f1, val_precision, val_recall, val_f1, cm):
+    print(f'Epoch {epoch}, Time: {epoch_time:.2f}s')
+    print(f'Train Loss: {train_loss:.4f}, Train Accuracy: {train_accuracy:.4f}')
+    print(f'Val Loss: {val_loss:.4f}, Val Accuracy: {val_accuracy:.4f}')
+    print(f'Train Precision: {train_precision:.4f}, Train Recall: {train_recall:.4f}, Train F1-Score: {train_f1:.4f}')
+    print(f'Validation Precision: {val_precision:.4f}, Validation Recall: {val_recall:.4f}, Validation F1-Score: {val_f1:.4f}')
+    print(f'Confusion Matrix:\n{cm}')
+    print('--------------------------------------------------')
 
 def plot_metrics(metrics: Metrics):
     fig, ax = plt.subplots(figsize=(12, 8))

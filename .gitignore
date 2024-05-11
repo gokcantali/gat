@@ -32,3 +32,4 @@ venv.bak/
 
 /data/*.csv
 results/
+best_model.pth
