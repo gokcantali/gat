@@ -1,4 +1,5 @@
 import time
+import os
 
 import numpy as np
 import torch
@@ -96,6 +97,8 @@ def train_model(model, train_data, val_data, epochs):
 
     plot_metrics(metrics)
 
+if not os.path.exists('./results'):
+    os.makedirs('./results')
 train_data, test_data, y_train = split_data()
 model = initialize_model(train_data, y_train)
 train_model(model, train_data, test_data, EPOCHS)
