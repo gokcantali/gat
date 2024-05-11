@@ -10,8 +10,7 @@ from sklearn.metrics import (
 )
 from sklearn.model_selection import train_test_split
 
-from gat.converter import convert_to_graph, construct_port_scan_label
-from gat.load_data import load_data
+from gat.converter import convert_to_graph
 from gat.model import GAT
 from gat.preprocesser import preprocess_df, preprocess_X, preprocess_y
 
@@ -44,7 +43,7 @@ def plot_loss(loss_values):
     plt.xlabel('Epoch')
     plt.ylabel('Loss')
     plt.grid(True)
-    plt.savefig('loss_per_epoch.png')
+    plt.savefig('./results/loss_per_epoch.png')
     plt.close()
 
 def train_model(model, train_data):

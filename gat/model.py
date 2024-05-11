@@ -19,16 +19,16 @@ class GAT(torch.nn.Module):
         return F.log_softmax(x, dim=1)
 
     def train_model(self, data):
-        self.train()  # Set model to training mode
-        self.optimizer.zero_grad()  # Clear previous gradients
-        out = self(data)  # Forward pass
+        self.train()
+        self.optimizer.zero_grad()
+        out = self(data)
         loss = F.nll_loss(out, data.y)
-        loss.backward()  # Backpropagate the loss
-        self.optimizer.step()  # Update model weights
+        loss.backward()
+        self.optimizer.step()
         return loss.item()
 
     def test_model(self, data):
-        self.eval()  # Set model to evaluation mode
-        out = self(data)  # Forward pass
-        _, pred = out.max(dim=1)  # Get predictions
-        return pred  # Return accuracy and predictions
+        self.eval()
+        out = self(data)
+        _, pred = out.max(dim=1)
+        return pred
