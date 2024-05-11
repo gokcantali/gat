@@ -5,6 +5,27 @@ from gat.encoder import ip_encoder, string_encoder, number_normalizer, boolean_s
 from gat.load_data import load_data
 
 
+def get_data_insights(df):
+    print("Data info:")
+    print("----------------------------------------------")
+    print(df.info())
+    print("Data describe:")
+    print("----------------------------------------------")
+    print(df.describe())
+    print("Data nunique:")
+    print("----------------------------------------------")
+    print(df.nunique())
+    print("Data correlation:")
+    print("----------------------------------------------")
+    print(df.corr())
+    print("Data skew:")
+    print("----------------------------------------------")
+    print(df.skew())
+    print("Data kurt:")
+    print("----------------------------------------------")
+    print(df.kurt())
+
+
 def preprocess_df():
     df = load_data()
     df = construct_port_scan_label(df)
@@ -31,6 +52,8 @@ def preprocess_X(df):
         X = encoder_function(X, column)
         
     X = X.apply(pd.to_numeric, errors='coerce').fillna(0)
+
+    get_data_insights(X)
 
 
     features = ['ack_flag', 'psh_flag', 'diversity_index', 'ip_source_part1',
