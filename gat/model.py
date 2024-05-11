@@ -25,7 +25,12 @@ class GAT(torch.nn.Module):
         loss = F.nll_loss(out, data.y)
         loss.backward()
         self.optimizer.step()
-        return loss.item()
+
+        _, preds = out.max(dim=1)
+        correct = preds.eq(data.y).sum().item()
+        accuracy = correct / data.y.size(0)
+
+        return loss.item(), accuracy
 
     def test_model(self, data):
         self.eval()

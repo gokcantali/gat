@@ -36,23 +36,28 @@ def initialize_model(train_data, y_train):
     )
     return model
 
-def plot_loss(loss_values):
-    plt.figure(figsize=(10, 5))
-    plt.plot(range(1, EPOCHS+1), loss_values, marker='o', linestyle='-', color='b')
-    plt.title('Loss per Epoch')
-    plt.xlabel('Epoch')
-    plt.ylabel('Loss')
+def plot_loss_and_accuracy(loss_values, accuracy_values):
+    _, ax1 = plt.subplots(figsize=(10, 5))
+    ax2 = ax1.twinx()
+    ax1.plot(range(1, EPOCHS+1), loss_values, marker='o', linestyle='-', color='b')
+    ax2.plot(range(1, EPOCHS+1), accuracy_values, marker='o', linestyle='-', color='r')
+    ax1.set_xlabel('Epoch')
+    ax1.set_ylabel('Loss', color='b')
+    ax2.set_ylabel('Accuracy', color='r')
+    plt.title('Loss and Accuracy per Epoch')
     plt.grid(True)
-    plt.savefig('./results/loss_per_epoch.png')
+    plt.savefig('./results/loss_and_accuracy_per_epoch.png')
     plt.close()
 
 def train_model(model, train_data):
     loss_values = []
+    accuracy_values = []
     for epoch in range(EPOCHS):
-        loss = model.train_model(train_data)
+        loss, accuracy = model.train_model(train_data)
         loss_values.append(loss)
-        print(f'Epoch {epoch+1}, Loss: {loss:.4f}')
-    plot_loss(loss_values)
+        accuracy_values.append(accuracy)
+        print(f'Epoch {epoch+1}, Loss: {loss:.4f}, Accuracy: {accuracy:.4f}')
+    plot_loss_and_accuracy(loss_values, accuracy_values)
 
 def evaluate_model(model, test_data):
     pred = model.test_model(test_data)
