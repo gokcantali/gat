@@ -1,4 +1,5 @@
 import os
+import random
 from dataclasses import dataclass
 from typing import Any, List
 
@@ -13,7 +14,8 @@ from gat.preprocesser import preprocess_df, preprocess_X, preprocess_y
 
 TEST_SIZE = 0.25
 RANDOM_STATE = 42
-NUM_RUNS = 3  # Number of runs for each configuration to average the metrics
+NUM_RUNS = 1  # Number of runs for each configuration to average the metrics
+NUM_SAMPLES = 10  # Number of random configurations to sample
 
 @dataclass
 class Config:
@@ -102,12 +104,21 @@ def run_experiment(config):
 
     return avg_val_accuracy, avg_val_loss, avg_train_loss, avg_val_precision, avg_val_recall, avg_val_f1, composite_score, metrics_list
 
-def grid_search(configurations):
+def random_search(config_ranges, num_samples):
     best_config = None
     best_composite_score = 0
     all_results = []
 
-    for config in configurations:
+    for _ in range(num_samples):
+        config = Config(
+            optimizer=random.choice(config_ranges["optimizers"]),
+            lr=random.uniform(*config_ranges["lr"]),
+            weight_decay=random.uniform(*config_ranges["weight_decay"]),
+            epochs=random.choice(config_ranges["epochs"]),
+            patience=random.choice(config_ranges["patience"]),
+            hidden_dim=random.choice(config_ranges["hidden_dim"]),
+            dropout=random.uniform(*config_ranges["dropout"])
+        )
         print(f"Running experiment with config: {config}")
         avg_val_accuracy, avg_val_loss, avg_train_loss, avg_val_precision, avg_val_recall, avg_val_f1, composite_score, metrics_list = run_experiment(config)
         config_result = ConfigResults(
@@ -133,31 +144,22 @@ def main():
     if not os.path.exists("./results"):
         os.makedirs("./results")
 
-    # Define grid of hyperparameters to search
-    optimizers = [torch.optim.AdamW, torch.optim.SGD, torch.optim.RMSprop]
-    lrs = [0.004]
-    weight_decays = [7e-4]
-    epochs_list = [30]
-    patiences = [5]
-    hidden_dims = [16]
-    dropouts = [0.6]
+    # Define ranges of hyperparameters to search
+    config_ranges = {
+        "optimizers": [torch.optim.AdamW, torch.optim.SGD, torch.optim.RMSprop],
+        "lr": [0.001, 0.01],
+        "weight_decay": [5e-4, 1e-3],
+        "epochs": [30],
+        "patience": [3, 5, 7],
+        "hidden_dim": [16, 32, 64],
+        "dropout": [0.4, 0.6]
+    }
 
-    configurations = [
-        Config(optimizer, lr, weight_decay, epochs, patience, hidden_dim, dropout)
-        for optimizer in optimizers
-        for lr in lrs
-        for weight_decay in weight_decays
-        for epochs in epochs_list
-        for patience in patiences
-        for hidden_dim in hidden_dims
-        for dropout in dropouts
-    ]
-
-    best_config, best_composite_score, all_results = grid_search(configurations)
+    best_config, best_composite_score, all_results = random_search(config_ranges, NUM_SAMPLES)
     print(f"Best config: {best_config} with composite score: {best_composite_score}")
 
     # Save results for further analysis
-    with open("./results/all_results.txt", "w") as f:
+    with open("./results/all_results_random_search.txt", "w") as f:
         for result in all_results:
             f.write(f"Config: {result.config}, "
                     f"Avg Val Accuracy: {result.avg_val_accuracy}, "

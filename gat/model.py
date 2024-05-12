@@ -31,7 +31,7 @@ class GAT(torch.nn.Module):
         self.dropout = nn.Dropout(p=dropout)
         self.optimizer = optimizer(self.parameters(), lr=lr, weight_decay=weight_decay)
         self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            self.optimizer, mode='min', factor=0.1, patience=self.patience, verbose=True
+            self.optimizer, mode="min", factor=0.1, patience=self.patience, verbose=True
         )
 
     def forward(self, data):
