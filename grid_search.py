@@ -13,7 +13,7 @@ from gat.preprocesser import preprocess_df, preprocess_X, preprocess_y
 
 TEST_SIZE = 0.25
 RANDOM_STATE = 42
-NUM_RUNS = 3  # Number of runs for each configuration to average the metrics
+NUM_RUNS = 1  # Number of runs for each configuration to average the metrics
 
 @dataclass
 class Config:
@@ -134,8 +134,8 @@ def main():
         os.makedirs("./results")
 
     # Define grid of hyperparameters to search
-    optimizers = [torch.optim.AdamW, torch.optim.SGD, torch.optim.RMSprop]
-    lrs = [0.004]
+    optimizers = [torch.optim.AdamW, torch.optim.RMSprop]
+    lrs = [1e-1, 1e-2, 1e-3, 1e-4]
     weight_decays = [7e-4]
     epochs_list = [30]
     patiences = [5]
