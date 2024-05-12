@@ -14,7 +14,7 @@ from gat.preprocesser import preprocess_df, preprocess_X, preprocess_y
 
 TEST_SIZE = 0.25
 RANDOM_STATE = 42
-NUM_RUNS = 1  # Number of runs for each configuration to average the metrics
+NUM_RUNS = 3  # Number of runs for each configuration to average the metrics
 NUM_SAMPLES = 10  # Number of random configurations to sample
 
 @dataclass
@@ -112,12 +112,12 @@ def random_search(config_ranges, num_samples):
     for _ in range(num_samples):
         config = Config(
             optimizer=random.choice(config_ranges["optimizers"]),
-            lr=random.uniform(*config_ranges["lr"]),
+            lr=random.choice(config_ranges["lr"]),
             weight_decay=random.uniform(*config_ranges["weight_decay"]),
             epochs=random.choice(config_ranges["epochs"]),
             patience=random.choice(config_ranges["patience"]),
             hidden_dim=random.choice(config_ranges["hidden_dim"]),
-            dropout=random.uniform(*config_ranges["dropout"])
+            dropout=random.choice(config_ranges["dropout"])
         )
         print(f"Running experiment with config: {config}")
         avg_val_accuracy, avg_val_loss, avg_train_loss, avg_val_precision, avg_val_recall, avg_val_f1, composite_score, metrics_list = run_experiment(config)
@@ -147,12 +147,12 @@ def main():
     # Define ranges of hyperparameters to search
     config_ranges = {
         "optimizers": [torch.optim.AdamW],
-        "lr": (0.03, 0.05),  # As a tuple for random.uniform
-        "weight_decay": (0.0004, 0.0006),  # As a tuple for random.uniform
-        "epochs": [20, 30, 40],
-        "patience": [3, 5, 7],
-        "hidden_dim": [25, 32, 39],
-        "dropout": (0.3, 0.5)  # As a tuple for random.uniform
+        "lr": [0.0325, 0.035, 0.0375, 0.04, 0.0425],
+        "weight_decay": (0.00045, 0.00055),
+        "epochs": [30, 40],
+        "patience": [5],
+        "hidden_dim": [28, 30, 32, 34],
+        "dropout": [0.35, 0.375, 0.4, 0.425, 0.45]
     }
 
     best_config, best_composite_score, all_results = random_search(config_ranges, NUM_SAMPLES)
