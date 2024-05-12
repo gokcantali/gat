@@ -17,8 +17,8 @@ from gat.data_models import Metrics
 
 class GAT(torch.nn.Module):
     def __init__(
-            self, optimizer, num_features, num_classes, weight_decay=5e-4, dropout=0.5,
-            hidden_dim=16, epochs=30, lr=0.005, patience=10
+            self, optimizer, num_features, num_classes, weight_decay=5e-4, dropout=0.6,
+            hidden_dim=16, epochs=30, lr=0.005, patience=5
     ):
         super(GAT, self).__init__()
         self.epochs = epochs
@@ -30,8 +30,9 @@ class GAT(torch.nn.Module):
         self.conv3 = GATConv(hidden_dim * 8, num_classes, heads=1, concat=True, dropout=dropout)
         self.dropout = nn.Dropout(p=dropout)
         self.optimizer = optimizer(self.parameters(), lr=lr, weight_decay=weight_decay)
-        self.scheduler = torch.optim.lr_scheduler.OneCycleLR(
-            self.optimizer, max_lr=0.01, steps_per_epoch=1, epochs=self.epochs)
+        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            self.optimizer, mode='min', factor=0.1, patience=self.patience, verbose=True
+        )
 
     def forward(self, data):
         x, edge_index = data.x, data.edge_index
@@ -86,10 +87,8 @@ class GAT(torch.nn.Module):
 
         for epoch in range(self.epochs):
             start_time = time.time()
-            train_loss, train_accuracy, train_precision, train_recall, train_f1 = self.train_epoch(
-                train_data)
-            val_loss, val_accuracy, val_precision, val_recall, val_f1, cm = self.validate_epoch(
-                val_data)
+            train_loss, train_accuracy, train_precision, train_recall, train_f1 = self.train_epoch(train_data)
+            val_loss, val_accuracy, val_precision, val_recall, val_f1, cm = self.validate_epoch(val_data)
 
             metrics.train_loss.append(train_loss)
             metrics.val_loss.append(val_loss)
@@ -109,7 +108,7 @@ class GAT(torch.nn.Module):
                 train_precision, train_recall, train_f1, val_precision, val_recall, val_f1, cm)
 
             # Adjust learning rate based on validation loss
-            self.scheduler.step()
+            self.scheduler.step(val_loss)
             print(f'Epoch {epoch + 1}, Current Learning Rate: {self.scheduler.optimizer.param_groups[0]["lr"]}')
 
             # Early stopping check to prevent overfitting

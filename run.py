@@ -16,9 +16,9 @@ class Config:
     lr = 0.005
     weight_decay = 5e-4
     epochs = 30
-    patience = 10
+    patience = 5
     hidden_dim = 16
-    dropout = 0.5
+    dropout = 0.6
 
 def split_data():
     df = preprocess_df()
@@ -44,7 +44,6 @@ def initialize_model(train_data, y_train):
         patience=config.patience
     )
     return model
-
 
 if not os.path.exists("./results"):
     os.makedirs("./results")
