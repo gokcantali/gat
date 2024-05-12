@@ -46,8 +46,8 @@ def initialize_model(train_data, y_train):
     return model
 
 
-if not os.path.exists('./results'):
-    os.makedirs('./results')
+if not os.path.exists("./results"):
+    os.makedirs("./results")
 train_data, test_data, y_train = split_data()
 model = initialize_model(train_data, y_train)
 model.train_model(train_data, test_data)

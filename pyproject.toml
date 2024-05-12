@@ -20,8 +20,12 @@ ruff = "^0.3.5"
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
+[tool.ruff]
+line-length = 80
+
 [tool.ruff.lint]
-extend-select = ["I"]
+select = ["E", "F", "W", "Q", "I"]
+ignore = ["E203", "E501"]
 
 [tool.ruff.format]
 docstring-code-format = true

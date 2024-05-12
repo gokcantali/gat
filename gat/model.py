@@ -30,7 +30,8 @@ class GAT(torch.nn.Module):
         self.conv3 = GATConv(hidden_dim * 8, num_classes, heads=1, concat=True, dropout=dropout)
         self.dropout = nn.Dropout(p=dropout)
         self.optimizer = optimizer(self.parameters(), lr=lr, weight_decay=weight_decay)
-        self.scheduler = torch.optim.lr_scheduler.OneCycleLR(self.optimizer, max_lr=0.01, steps_per_epoch=1, epochs=self.epochs)
+        self.scheduler = torch.optim.lr_scheduler.OneCycleLR(
+            self.optimizer, max_lr=0.01, steps_per_epoch=1, epochs=self.epochs)
 
     def forward(self, data):
         x, edge_index = data.x, data.edge_index
@@ -56,9 +57,9 @@ class GAT(torch.nn.Module):
         correct = preds.eq(data.y).sum().item()
         accuracy = correct / data.y.size(0)
 
-        precision = precision_score(data.y.cpu(), preds.cpu(), average='weighted')
-        recall = recall_score(data.y.cpu(), preds.cpu(), average='weighted')
-        f1 = f1_score(data.y.cpu(), preds.cpu(), average='weighted')
+        precision = precision_score(data.y.cpu(), preds.cpu(), average="weighted")
+        recall = recall_score(data.y.cpu(), preds.cpu(), average="weighted")
+        f1 = f1_score(data.y.cpu(), preds.cpu(), average="weighted")
 
         return loss.item(), accuracy, precision, recall, f1
 
@@ -71,22 +72,24 @@ class GAT(torch.nn.Module):
             val_correct = val_preds.eq(data.y).sum().item()
             val_accuracy = val_correct / data.y.size(0)
 
-            val_precision = precision_score(data.y.cpu(), val_preds.cpu(), average='weighted')
-            val_recall = recall_score(data.y.cpu(), val_preds.cpu(), average='weighted')
-            val_f1 = f1_score(data.y.cpu(), val_preds.cpu(), average='weighted')
+            val_precision = precision_score(data.y.cpu(), val_preds.cpu(), average="weighted")
+            val_recall = recall_score(data.y.cpu(), val_preds.cpu(), average="weighted")
+            val_f1 = f1_score(data.y.cpu(), val_preds.cpu(), average="weighted")
             cm = confusion_matrix(data.y.cpu(), val_preds.cpu())
 
         return val_loss, val_accuracy, val_precision, val_recall, val_f1, cm
 
     def train_model(self, train_data, val_data):
         metrics = Metrics()
-        best_val_loss = float('inf')
+        best_val_loss = float("inf")
         patience_counter = 0
 
         for epoch in range(self.epochs):
             start_time = time.time()
-            train_loss, train_accuracy, train_precision, train_recall, train_f1 = self.train_epoch(train_data)
-            val_loss, val_accuracy, val_precision, val_recall, val_f1, cm = self.validate_epoch(val_data)
+            train_loss, train_accuracy, train_precision, train_recall, train_f1 = self.train_epoch(
+                train_data)
+            val_loss, val_accuracy, val_precision, val_recall, val_f1, cm = self.validate_epoch(
+                val_data)
 
             metrics.train_loss.append(train_loss)
             metrics.val_loss.append(val_loss)
@@ -113,14 +116,14 @@ class GAT(torch.nn.Module):
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
                 patience_counter = 0
-                torch.save(self.state_dict(), 'best_model.pth')
+                torch.save(self.state_dict(), "best_model.pth")
             else:
                 patience_counter += 1
                 if patience_counter >= self.patience:
                     print("Early stopping")
                     break
 
-        self.load_state_dict(torch.load('best_model.pth'))
+        self.load_state_dict(torch.load("best_model.pth"))
         plot_metrics(metrics)
 
     def test_model(self, data):
