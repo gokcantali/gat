@@ -17,8 +17,8 @@ from gat.data_models import Metrics
 
 class GAT(torch.nn.Module):
     def __init__(
-            self, optimizer, num_features, num_classes, weight_decay=5e-4, dropout=0.6,
-            hidden_dim=16, epochs=30, lr=0.005, patience=5
+            self, optimizer, num_features, num_classes, weight_decay=1e-3, dropout=0.7,
+            hidden_dim=16, epochs=30, lr=0.005, patience=3
     ):
         super(GAT, self).__init__()
         self.epochs = epochs

@@ -14,7 +14,7 @@ RANDOM_STATE = 42
 class Config:
     optimizer = torch.optim.AdamW
     lr = 0.005
-    weight_decay = 5e-4
+    weight_decay = 7e-4
     epochs = 30
     patience = 5
     hidden_dim = 16
