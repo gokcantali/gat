@@ -160,7 +160,7 @@ def main():
     print(f"Best config: {best_config} with composite score: {best_composite_score}")
 
     # Save results for further analysis
-    with open("./results/best_result.txt", "w") as f:
+    with open("./results/best_result_bayesian.txt", "w") as f:
         f.write(f"Best Config: {best_config}\nComposite Score: {best_composite_score}\n")
 
 if __name__ == "__main__":
