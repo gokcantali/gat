@@ -111,21 +111,21 @@ def create_initial_population(size, config_ranges):
     for _ in range(size):
         config = Config(
             optimizer=random.choice(config_ranges["optimizers"]),
-            lr=random.uniform(*config_ranges["lr"]),
-            weight_decay=random.uniform(*config_ranges["weight_decay"]),
+            lr=random.choice(config_ranges["lr"]),  # Use random.choice for discrete values
+            weight_decay=random.uniform(*config_ranges["weight_decay"]),  # Use random.uniform for continuous range
             epochs=random.choice(config_ranges["epochs"]),
             patience=random.choice(config_ranges["patience"]),
             hidden_dim=random.choice(config_ranges["hidden_dim"]),
-            dropout=random.uniform(*config_ranges["dropout"])
+            dropout=random.choice(config_ranges["dropout"])  # Use random.choice for discrete values
         )
         population.append(config)
     return population
 
 def mutate_config(config, config_ranges):
     if random.random() < MUTATION_RATE:
-        config.lr = random.uniform(*config_ranges["lr"])
+        config.lr = random.choice(config_ranges["lr"])  # Use random.choice for discrete values
     if random.random() < MUTATION_RATE:
-        config.weight_decay = random.uniform(*config_ranges["weight_decay"])
+        config.weight_decay = random.uniform(*config_ranges["weight_decay"])  # Use random.uniform for continuous range
     if random.random() < MUTATION_RATE:
         config.epochs = random.choice(config_ranges["epochs"])
     if random.random() < MUTATION_RATE:
@@ -133,7 +133,7 @@ def mutate_config(config, config_ranges):
     if random.random() < MUTATION_RATE:
         config.hidden_dim = random.choice(config_ranges["hidden_dim"])
     if random.random() < MUTATION_RATE:
-        config.dropout = random.uniform(*config_ranges["dropout"])
+        config.dropout = random.choice(config_ranges["dropout"])  # Use random.choice for discrete values
     return config
 
 def crossover_configs(config1, config2):
@@ -199,20 +199,20 @@ def main():
 
     # Define ranges of hyperparameters to search
     config_ranges = {
-        "optimizers": [torch.optim.AdamW, torch.optim.SGD, torch.optim.RMSprop],
-        "lr": [0.001, 0.01],
-        "weight_decay": [5e-4, 1e-3],
-        "epochs": [30],
-        "patience": [3, 5],
-        "hidden_dim": [16, 32, 64],
-        "dropout": [0.4, 0.6]
+        "optimizers": [torch.optim.AdamW],
+        "lr": [0.039, 0.04, 0.041, 0.042, 0.0425],
+        "weight_decay": (0.00046, 0.00052),
+        "epochs": [30, 40],
+        "patience": [5],
+        "hidden_dim": [28, 30, 32, 34, 36],
+        "dropout": [0.35, 0.375, 0.4, 0.425, 0.45]
     }
 
     best_config, best_composite_score = evolutionary_search(config_ranges)
     print(f"Best config: {best_config} with composite score: {best_composite_score}")
 
     # Save results for further analysis
-    with open("./results/best_result.txt", "w") as f:
+    with open("./results/best_result_evolutionary.txt", "w") as f:
         f.write(f"Best Config: {best_config}\nComposite Score: {best_composite_score}\n")
 
 if __name__ == "__main__":
