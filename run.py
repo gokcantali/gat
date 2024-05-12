@@ -13,12 +13,12 @@ RANDOM_STATE = 42
 
 class Config:
     optimizer = torch.optim.AdamW
-    lr = 0.04
-    weight_decay = 0.00048
+    lr = 0.0425
+    weight_decay = 0.0004807430799298252
     epochs = 30
     patience = 5
-    hidden_dim = 32
-    dropout = 0.4
+    hidden_dim = 30
+    dropout = 0.425
 
 def split_data():
     df = preprocess_df()
