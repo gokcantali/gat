@@ -134,13 +134,13 @@ def main():
         os.makedirs("./results")
 
     # Define grid of hyperparameters to search
-    optimizers = [torch.optim.AdamW, torch.optim.RMSprop]
-    lrs = [1e-1, 1e-2, 1e-3, 1e-4]
-    weight_decays = [7e-4]
+    optimizers = [torch.optim.AdamW]
+    lrs = [0.04]
+    weight_decays = [5e-4]
     epochs_list = [30]
-    patiences = [5]
-    hidden_dims = [16]
-    dropouts = [0.6]
+    patiences = [3]
+    hidden_dims = [32]
+    dropouts = [0.4]
 
     configurations = [
         Config(optimizer, lr, weight_decay, epochs, patience, hidden_dim, dropout)

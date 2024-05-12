@@ -146,13 +146,13 @@ def main():
 
     # Define ranges of hyperparameters to search
     config_ranges = {
-        "optimizers": [torch.optim.AdamW, torch.optim.SGD, torch.optim.RMSprop],
-        "lr": [0.001, 0.01],
-        "weight_decay": [5e-4, 1e-3],
-        "epochs": [30],
+        "optimizers": [torch.optim.AdamW],
+        "lr": (0.03, 0.05),  # As a tuple for random.uniform
+        "weight_decay": (0.0004, 0.0006),  # As a tuple for random.uniform
+        "epochs": [20, 30, 40],
         "patience": [3, 5, 7],
-        "hidden_dim": [16, 32, 64],
-        "dropout": [0.4, 0.6]
+        "hidden_dim": [25, 32, 39],
+        "dropout": (0.3, 0.5)  # As a tuple for random.uniform
     }
 
     best_config, best_composite_score, all_results = random_search(config_ranges, NUM_SAMPLES)
