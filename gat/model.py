@@ -124,6 +124,7 @@ class GAT(torch.nn.Module):
 
         self.load_state_dict(torch.load("best_model.pth"))
         plot_metrics(metrics)
+        return metrics
 
     def test_model(self, data):
         self.eval()
