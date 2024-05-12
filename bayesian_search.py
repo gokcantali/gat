@@ -17,6 +17,8 @@ from gat.preprocesser import preprocess_df, preprocess_X, preprocess_y
 TEST_SIZE = 0.25
 RANDOM_STATE = 42
 NUM_RUNS = 1  # Number of runs for each configuration to average the metrics
+GLOBAL_X = None
+GLOBAL_Y = None
 
 @dataclass
 class Config:
@@ -41,9 +43,13 @@ class ConfigResults:
     composite_score: float
 
 def split_data():
-    df = preprocess_df()
-    X = preprocess_X(df)
-    y = preprocess_y(df)
+    global GLOBAL_X, GLOBAL_Y
+    if GLOBAL_X is None or GLOBAL_Y is None:
+        df = preprocess_df()
+        GLOBAL_X = preprocess_X(df)
+        GLOBAL_Y = preprocess_y(df)
+    X = GLOBAL_X
+    y = GLOBAL_Y
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=TEST_SIZE, stratify=y, random_state=RANDOM_STATE)
     train_data = convert_to_graph(X_train, y_train)
@@ -107,13 +113,13 @@ def run_experiment(config):
 
 # Define the search space for Bayesian Optimization
 space = [
-    Categorical([torch.optim.AdamW, torch.optim.SGD, torch.optim.RMSprop], name="optimizer"),
-    Real(0.001, 0.01, name="lr"),
-    Real(5e-4, 1e-3, name="weight_decay"),
-    Integer(30, 50, name="epochs"),
-    Integer(3, 5, name="patience"),
-    Integer(16, 64, name="hidden_dim"),
-    Real(0.4, 0.6, name="dropout")
+    Categorical([torch.optim.AdamW], name="optimizer"),
+    Real(0.035, 0.05, name="lr"),
+    Real(4.5e-4, 6e-4, name="weight_decay"),
+    Integer(25, 35, name="epochs"),
+    Integer(3, 7, name="patience"),
+    Integer(24, 40, name="hidden_dim"),
+    Real(0.4, 0.45, name="dropout")
 ]
 
 # Objective function to minimize
@@ -125,11 +131,11 @@ def objective(**params):
         weight_decay=params["weight_decay"],
         epochs=params["epochs"],
         patience=params["patience"],
-        hidden_dim=params["hidden_dim"],
+        hidden_dim=int(params["hidden_dim"]),
         dropout=params["dropout"]
     )
-    avg_val_accuracy, avg_val_loss, avg_train_loss, avg_val_precision, avg_val_recall, avg_val_f1, composite_score, metrics_list = run_experiment(config)
-    return -composite_score  # We minimize the negative composite score to maximize the actual composite score
+    _, _, _, _, _, _, composite_score, _ = run_experiment(config)
+    return -composite_score
 
 def main():
     if not os.path.exists("./results"):
