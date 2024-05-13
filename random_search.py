@@ -16,6 +16,8 @@ TEST_SIZE = 0.25
 RANDOM_STATE = 42
 NUM_RUNS = 3  # Number of runs for each configuration to average the metrics
 NUM_SAMPLES = 10  # Number of random configurations to sample
+GLOBAL_X = None
+GLOBAL_Y = None
 
 @dataclass
 class Config:
@@ -40,9 +42,13 @@ class ConfigResults:
     composite_score: float
 
 def split_data():
-    df = preprocess_df()
-    X = preprocess_X(df)
-    y = preprocess_y(df)
+    global GLOBAL_X, GLOBAL_Y
+    if GLOBAL_X is None or GLOBAL_Y is None:
+        df = preprocess_df()
+        GLOBAL_X = preprocess_X(df)
+        GLOBAL_Y = preprocess_y(df)
+    X = GLOBAL_X
+    y = GLOBAL_Y
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=TEST_SIZE, stratify=y, random_state=RANDOM_STATE)
     train_data = convert_to_graph(X_train, y_train)
