@@ -2,7 +2,7 @@
 
 import pandas as pd
 
-from gat.analysis import get_data_insights
+from gat.analysis import get_data_insights, visualize_data
 from gat.encoder import (
     boolean_string_to_int,
     ip_encoder,
@@ -72,6 +72,7 @@ def preprocess_X(df):
         X = encoder_function(X, column)
     X = X.apply(pd.to_numeric, errors="coerce").fillna(0)
     get_data_insights(X, "./results/data_insights.txt")
+    visualize_data(X, "./results")
     features = ["ack_flag", "psh_flag", "diversity_index", "ip_source_part1",
                 "ip_source_part2", "ip_source_part3", "ip_source_part4",
                 "ip_source_part5", "ip_source_part6", "ip_source_part7",
