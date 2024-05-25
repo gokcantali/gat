@@ -4,4 +4,7 @@ import pandas as pd
 
 
 def load_data(file_path: Path = Path("data/traces.csv")):
-    return pd.read_csv(file_path)
+    print("Start loading data...")
+    df = pd.read_csv(file_path)
+    print("Data loaded successfully.")
+    return df

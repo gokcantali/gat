@@ -21,13 +21,21 @@ class Config:
     dropout = 0.425
 
 def split_data():
+    print("Start feature engineering...")
     df = preprocess_df()
+    print("Feature engineering done.")
+    print("Start preprocessing...")
     X = preprocess_X(df)
     y = preprocess_y(df)
+    print("Preprocessing done.")
+    print("Start splitting data...")
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=TEST_SIZE, stratify=y, random_state=RANDOM_STATE)
+    print("Splitting data done.")
+    print("Start converting to graph...")
     train_data = convert_to_graph(X_train, y_train)
     test_data = convert_to_graph(X_test, y_test)
+    print("Converting to graph done.")
     return train_data, test_data, y_train
 
 def initialize_model(train_data, y_train):
