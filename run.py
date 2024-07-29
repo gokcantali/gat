@@ -6,6 +6,7 @@ from sklearn.model_selection import train_test_split
 
 from gat.converter import convert_to_graph
 from gat.model import GAT
+from gat.gcn import GCN
 from gat.preprocesser import preprocess_df, preprocess_X, preprocess_y
 
 TEST_SIZE = 0.25
@@ -38,9 +39,25 @@ def split_data():
     print("Converting to graph done.")
     return train_data, test_data, y_train
 
-def initialize_model(train_data, y_train):
+def initialize_gat_model(train_data, y_train):
     config = Config()
     model = GAT(
+        optimizer=config.optimizer,
+        num_features=train_data.num_features,
+        num_classes=len(np.unique(y_train)),
+        weight_decay=config.weight_decay,
+        dropout=config.dropout,
+        hidden_dim=config.hidden_dim,
+        epochs=config.epochs,
+        lr=config.lr,
+        patience=config.patience
+    )
+    return model
+
+
+def initialize_gcn_model(train_data, y_train):
+    config = Config()
+    model = GCN(
         optimizer=config.optimizer,
         num_features=train_data.num_features,
         num_classes=len(np.unique(y_train)),
@@ -58,5 +75,13 @@ if __name__ == "__main__":
     if not os.path.exists("./results"):
         os.makedirs("./results")
     train_data, test_data, y_train = split_data()
-    model = initialize_model(train_data, y_train)
-    model.train_model(train_data, test_data)
+
+    #print("GAT MODEL")
+    #gat_model = initialize_gat_model(train_data, y_train)
+    #gat_model.train_model(train_data, test_data)
+    #print("=================")
+
+    print("GCN MODEL")
+    gcn_model = initialize_gcn_model(train_data, y_train)
+    gcn_model.train_model(train_data, test_data)
+    print("=================")
