@@ -34,27 +34,31 @@ def split_dataframe(df, num_chunks):
     chunks = [df.iloc[i * chunk_size:(i + 1) * chunk_size] for i in range(num_chunks)]
     return chunks
 
-def construct_port_scan_label(df):
+def construct_port_scan_label(df, use_diversity_index=True):
     df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
     df.sort_values(by=["ip_source", "timestamp"], inplace=True)
-    num_chunks = mp.cpu_count()
-    chunks = split_dataframe(df, num_chunks)
-    time_window = "10s"
-    with mp.Pool(processes=num_chunks) as pool:
-        results = pool.starmap(process_chunk, [(chunk, time_window) for chunk in chunks])
-    df = pd.concat(results, ignore_index=True)
-    df["diversity_index"] = df["diversity_index"].fillna(0)
-    df = df.sample(frac=1).reset_index(drop=True)
+    if use_diversity_index:
+        num_chunks = mp.cpu_count()
+        chunks = split_dataframe(df, num_chunks)
+        time_window = "10s"
+        with mp.Pool(processes=num_chunks) as pool:
+            results = pool.starmap(process_chunk, [(chunk, time_window) for chunk in chunks])
+        df = pd.concat(results, ignore_index=True)
+        df["diversity_index"] = df["diversity_index"].fillna(0)
+        df = df.sample(frac=1).reset_index(drop=True)
     return df
 
-def preprocess_df():
+def preprocess_df(use_diversity_index=True):
     df = load_data()
-    df = construct_port_scan_label(df)
+    df = construct_port_scan_label(df, use_diversity_index=use_diversity_index)
     df["is_anomaly"] = df["is_anomaly"].replace({"True": 1, "False": 0}).astype(int)
     return df
 
-def preprocess_X(df):
+def preprocess_X(df, use_diversity_index=True):
     X = df.drop(columns=["is_anomaly"])
+    X["timestamp"] = pd.to_datetime(X["timestamp"], utc=True)
+    X.sort_values(by=["ip_source", "timestamp"], inplace=True)
+
     encoder_map = {
         "ip_source": ip_encoder,
         "ip_destination": ip_encoder,
@@ -73,7 +77,7 @@ def preprocess_X(df):
     X = X.apply(pd.to_numeric, errors="coerce").fillna(0)
     get_data_insights(X, "./results/data_insights.txt")
     visualize_data(X, "./results")
-    features = ["ack_flag", "psh_flag", "diversity_index", "ip_source_part1",
+    features = ["ack_flag", "psh_flag", "ip_source_part1",
                 "ip_source_part2", "ip_source_part3", "ip_source_part4",
                 "ip_source_part5", "ip_source_part6", "ip_source_part7",
                 "ip_source_part8", "ip_destination_part1", "ip_destination_part2",
@@ -83,6 +87,8 @@ def preprocess_X(df):
                 "source_namespace_label_normalized",
                 "destination_namespace_label_normalized",
                 "source_port_label_normalized", "destination_port_label_normalized"]
+    if use_diversity_index:
+        features.append("diversity_index")
     X = X[features]
     return X
 
