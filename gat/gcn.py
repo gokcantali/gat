@@ -3,6 +3,7 @@ import time
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from numpy import mean
 from sklearn.metrics import (
     confusion_matrix,
     f1_score,
@@ -64,6 +65,36 @@ class GCN(torch.nn.Module):
 
         return loss.item(), accuracy, precision, recall, f1
 
+    def train_epoch_batch_mode(self, data_loader):
+        self.train()
+
+        total_loss = 0
+        total_accuracy = 0.0
+        total_precision = 0.0
+        total_recall = 0.0
+        total_f1 = 0.0
+        for data in data_loader:
+            self.optimizer.zero_grad()
+            out = self(data)
+            loss = F.nll_loss(out, data.y)
+            loss.backward()
+            self.optimizer.step()
+            total_loss += loss.item()
+
+            _, preds = out.max(dim=1)
+            correct = preds.eq(data.y).sum().item()
+
+            total_accuracy += correct / data.y.size(0)
+            total_precision += precision_score(data.y.cpu(), preds.cpu(), average="weighted")
+            total_recall += recall_score(data.y.cpu(), preds.cpu(), average="weighted")
+            total_f1 += f1_score(data.y.cpu(), preds.cpu(), average="weighted")
+
+        return (
+            total_loss, mean(total_accuracy),
+            mean(total_precision), mean(total_recall),
+            mean(total_f1)
+        )
+
     def validate_epoch(self, data):
         self.eval()
         with torch.no_grad():
@@ -80,14 +111,22 @@ class GCN(torch.nn.Module):
 
         return val_loss, val_accuracy, val_precision, val_recall, val_f1, cm
 
-    def train_model(self, train_data, val_data):
+    def train_model(self, train_data, val_data, batch_mode=False):
         metrics = Metrics()
         best_val_loss = float("inf")
         patience_counter = 0
 
         for epoch in range(self.epochs):
             start_time = time.time()
-            train_loss, train_accuracy, train_precision, train_recall, train_f1 = self.train_epoch(train_data)
+            if batch_mode:
+                train_loss, train_accuracy, train_precision, train_recall, train_f1 = (
+                    self.train_epoch_batch_mode(train_data)
+                )
+            else:
+                train_loss, train_accuracy, train_precision, train_recall, train_f1 = (
+                    self.train_epoch(train_data)
+                )
+
             val_loss, val_accuracy, val_precision, val_recall, val_f1, cm = self.validate_epoch(val_data)
 
             metrics.train_loss.append(train_loss)
