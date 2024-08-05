@@ -3,7 +3,6 @@ import time
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from numpy import mean
 from sklearn.metrics import (
     confusion_matrix,
     f1_score,
@@ -68,6 +67,7 @@ class GCN(torch.nn.Module):
     def train_epoch_batch_mode(self, data_loader):
         self.train()
 
+        num_of_batches = len(data_loader)
         total_loss = 0
         total_accuracy = 0.0
         total_precision = 0.0
@@ -90,9 +90,11 @@ class GCN(torch.nn.Module):
             total_f1 += f1_score(data.y.cpu(), preds.cpu(), average="weighted")
 
         return (
-            total_loss, mean(total_accuracy),
-            mean(total_precision), mean(total_recall),
-            mean(total_f1)
+            total_loss / num_of_batches,
+            total_accuracy / num_of_batches,
+            total_precision / num_of_batches,
+            total_recall / num_of_batches,
+            total_f1 / num_of_batches
         )
 
     def validate_epoch(self, data):
@@ -111,6 +113,43 @@ class GCN(torch.nn.Module):
 
         return val_loss, val_accuracy, val_precision, val_recall, val_f1, cm
 
+    def validate_epoch_batch_model(self, data_loader):
+        self.eval()
+
+        num_of_batches = len(data_loader)
+        total_loss = 0
+        total_accuracy = 0.0
+        total_precision = 0.0
+        total_recall = 0.0
+        total_f1 = 0.0
+        data_y = []
+        pred_y = []
+        for data in data_loader:
+            with torch.no_grad():
+                val_out = self(data)
+                total_loss += F.nll_loss(val_out, data.y).item()
+
+                _, val_preds = val_out.max(dim=1)
+                val_correct = val_preds.eq(data.y).sum().item()
+
+                total_accuracy += val_correct / data.y.size(0)
+                total_precision += precision_score(data.y.cpu(), val_preds.cpu(), average="weighted")
+                total_recall += recall_score(data.y.cpu(), val_preds.cpu(), average="weighted")
+                total_f1 += f1_score(data.y.cpu(), val_preds.cpu(), average="weighted")
+                data_y += data.y.cpu()
+                pred_y += val_preds.cpu()
+
+        cm = confusion_matrix(data_y, pred_y)
+
+        return (
+            total_loss / num_of_batches,
+            total_accuracy / num_of_batches,
+            total_precision / num_of_batches,
+            total_recall / num_of_batches,
+            total_f1 / num_of_batches,
+            cm
+        )
+
     def train_model(self, train_data, val_data, batch_mode=False):
         metrics = Metrics()
         best_val_loss = float("inf")
@@ -127,7 +166,14 @@ class GCN(torch.nn.Module):
                     self.train_epoch(train_data)
                 )
 
-            val_loss, val_accuracy, val_precision, val_recall, val_f1, cm = self.validate_epoch(val_data)
+            if batch_mode:
+                val_loss, val_accuracy, val_precision, val_recall, val_f1, cm = (
+                    self.validate_epoch_batch_model(val_data)
+                )
+            else:
+                val_loss, val_accuracy, val_precision, val_recall, val_f1, cm = (
+                    self.validate_epoch(val_data)
+                )
 
             metrics.train_loss.append(train_loss)
             metrics.val_loss.append(val_loss)

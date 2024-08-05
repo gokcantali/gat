@@ -4,7 +4,7 @@ import numpy as np
 import torch
 from sklearn.model_selection import train_test_split
 
-from gat.converter import convert_to_graph
+from gat.converter import convert_to_graph, create_tdg_graphs_using_window
 from gat.model import GAT
 from gat.gcn import GCN
 from gat.preprocesser import preprocess_df, preprocess_X, preprocess_y
@@ -39,6 +39,20 @@ def split_data():
     print("Converting to graph done.")
     return train_data, test_data, y_train
 
+
+def split_data_for_tdg():
+    print("Start feature engineering...")
+    df = preprocess_df()
+
+    df_train, df_test = train_test_split(
+        df, test_size=TEST_SIZE, stratify=df['is_anomaly'], random_state=RANDOM_STATE)
+    print("Splitting data done.")
+    print("Start converting to graph...")
+    train_data = create_tdg_graphs_using_window(df_train)
+    test_data = create_tdg_graphs_using_window(df_test)
+    print("Converting to graph done.")
+    return train_data, test_data
+
 def initialize_gat_model(train_data, y_train):
     config = Config()
     model = GAT(
@@ -55,12 +69,16 @@ def initialize_gat_model(train_data, y_train):
     return model
 
 
-def initialize_gcn_model(train_data, y_train):
+def initialize_gcn_model(train_data, num_classes, batch_mode=False):
     config = Config()
+    num_of_features = (
+        train_data.dataset[0].x.shape[1]
+        if batch_mode else train_data.num_features
+    )
     model = GCN(
         optimizer=config.optimizer,
-        num_features=train_data.num_features,
-        num_classes=len(np.unique(y_train)),
+        num_features=num_of_features,
+        num_classes=num_classes,
         weight_decay=config.weight_decay,
         dropout=config.dropout,
         hidden_dim=config.hidden_dim,
@@ -74,7 +92,7 @@ def initialize_gcn_model(train_data, y_train):
 if __name__ == "__main__":
     if not os.path.exists("./results"):
         os.makedirs("./results")
-    train_data, test_data, y_train = split_data()
+    train_data, test_data = split_data_for_tdg()
 
     #print("GAT MODEL")
     #gat_model = initialize_gat_model(train_data, y_train)
@@ -82,6 +100,6 @@ if __name__ == "__main__":
     #print("=================")
 
     print("GCN MODEL")
-    gcn_model = initialize_gcn_model(train_data, y_train)
-    gcn_model.train_model(train_data, test_data)
+    gcn_model = initialize_gcn_model(train_data, num_classes=2, batch_mode=True)
+    gcn_model.train_model(train_data, test_data, batch_mode=True)
     print("=================")

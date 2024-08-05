@@ -4,6 +4,7 @@ import torch
 from numpy import average
 from sklearn.neighbors import kneighbors_graph
 from torch_geometric.data import Data
+from torch_geometric.loader import DataLoader
 
 from gat.encoder import ip_encoder
 
@@ -52,7 +53,12 @@ def create_tdg_graph(X_window, y_window):
         if source not in node_to_source_edge_labels:
             node_to_source_edge_labels[source] = []
         node_to_source_edge_labels[source].append(label)
-    edge_index = torch.tensor(edges, dtype=torch.long)
+    edge_index = torch.tensor(edges, dtype=torch.long).t().contiguous()
+
+    node_labels = [0] * len(nodes)
+    for ind, node in enumerate(nodes):
+        if average(node_to_source_edge_labels.get(node, [0])) > 0.5:
+            node_labels[ind] = 1
 
     node_df = ip_encoder(node_df, 'ip', False)
     node_df['port'] = node_df['port'].replace('', 0).fillna(0).astype(int)
@@ -61,18 +67,17 @@ def create_tdg_graph(X_window, y_window):
         x=torch.tensor(node_df.values, dtype=torch.float),
         edge_index=edge_index,
         edge_attr=torch.tensor(edge_labels, dtype=torch.float),
-        y=torch.tensor([
-             1 if average(edge_labels) > 0.5 else 0
-             for edge_labels in node_to_source_edge_labels.values()
-        ])
+        y=torch.tensor(node_labels)
     )
 
 
 def create_tdg_graphs_using_window(df, window_size='1Min'):
     df_list = [g for _, g in df.groupby(pd.Grouper(key='timestamp', freq=window_size))]
-    return [
-        create_tdg_graph(
-            X_window=df_window.drop(columns=['is_anomaly']),
-            y_window=df_window['is_anomaly'].replace({"True": 1, "False": 0}).astype(int)
-        ) for df_window in df_list
-    ]
+    return DataLoader(
+        [
+            create_tdg_graph(
+                X_window=df_window.drop(columns=['is_anomaly']),
+                y_window=df_window['is_anomaly'].replace({"True": 1, "False": 0}).astype(int)
+            ) for df_window in df_list
+        ],
+    )
