@@ -57,7 +57,7 @@ def create_tdg_graph(X_window, y_window):
 
     node_labels = [0] * len(nodes)
     for ind, node in enumerate(nodes):
-        if average(node_to_source_edge_labels.get(node, [0])) > 0.5:
+        if average(node_to_source_edge_labels.get(node, [0])) > 0.75:
             node_labels[ind] = 1
 
     node_df = ip_encoder(node_df, 'ip', False)
@@ -78,6 +78,6 @@ def create_tdg_graphs_using_window(df, window_size='1Min'):
             create_tdg_graph(
                 X_window=df_window.drop(columns=['is_anomaly']),
                 y_window=df_window['is_anomaly'].replace({"True": 1, "False": 0}).astype(int)
-            ) for df_window in df_list
+            ) for df_window in df_list if df_window.shape[0] > 0
         ],
     )

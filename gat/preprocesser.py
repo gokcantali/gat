@@ -36,7 +36,7 @@ def split_dataframe(df, num_chunks):
 
 def construct_port_scan_label(df, use_diversity_index=True):
     df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
-    df.sort_values(by=["ip_source", "timestamp"], inplace=True)
+    df.sort_values(by=["timestamp"], inplace=True)
     if use_diversity_index:
         num_chunks = mp.cpu_count()
         chunks = split_dataframe(df, num_chunks)
