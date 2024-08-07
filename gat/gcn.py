@@ -17,8 +17,8 @@ from gat.data_models import Metrics
 
 class GCN(torch.nn.Module):
     def __init__(
-            self, optimizer, num_features, num_classes, weight_decay=1e-3, dropout=0.7,
-            hidden_dim=16, epochs=30, lr=0.005, patience=3
+        self, optimizer, num_features, num_classes, weight_decay=1e-3, dropout=0.7,
+        hidden_dim=16, epochs=30, lr=0.005, patience=3
     ):
         super(GCN, self).__init__()
         self.epochs = epochs
@@ -35,16 +35,28 @@ class GCN(torch.nn.Module):
         )
 
     def forward(self, data):
-        x, edge_index = data.x, data.edge_index
-        x = self.dropout(x)
-        x = F.elu(self.conv1(x, edge_index))
-        x = self.bn1(x)
-        x = self.dropout(x)
-        x = F.elu(self.conv2(x, edge_index))
-        x = self.bn2(x)
-        x = self.dropout(x)
-        x = self.conv3(x, edge_index)
-        return F.log_softmax(x, dim=1)
+        x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
+        #x = self.dropout(x)
+
+        x_src, x_dst = x[edge_index[0]], x[edge_index[1]]
+        edge_data = torch.cat([x_src, edge_attr, x_dst], dim=-1)
+
+        # TODO: Refactor this code piece
+        if edge_index.max() > edge_data.shape[0]:
+            print("might be a problem")
+            for i in range(edge_index.max() - edge_data.shape[0] + 1):
+                new_row = torch.Tensor(1, edge_data.shape[1])
+                edge_data = torch.cat([edge_data, new_row], dim=0)
+
+        edge_data = F.elu(self.conv1(edge_data, edge_index))
+        edge_data = self.bn1(edge_data)
+        #x = self.dropout(x)
+        edge_data = F.elu(self.conv2(edge_data, edge_index))
+        edge_data = self.bn2(edge_data)
+        #x = self.dropout(x)
+        edge_data = self.conv3(edge_data, edge_index)
+
+        return F.log_softmax(edge_data, dim=-1)
 
     def train_epoch(self, data):
         self.train()
@@ -127,16 +139,22 @@ class GCN(torch.nn.Module):
         for data in data_loader:
             with torch.no_grad():
                 val_out = self(data)
-                total_loss += F.nll_loss(val_out, data.y).item()
+                labels = data.y
+                # TODO: Refactor this piece
+                if val_out.shape[0] > labels.shape[0]:
+                    num_of_new_labels = val_out.shape[0] - labels.shape[0]
+                    labels = torch.cat([labels, torch.zeros(num_of_new_labels, dtype=torch.long)], dim=0)
+
+                total_loss += F.nll_loss(val_out, labels).item()
 
                 _, val_preds = val_out.max(dim=1)
-                val_correct = val_preds.eq(data.y).sum().item()
+                val_correct = val_preds.eq(labels).sum().item()
 
-                total_accuracy += val_correct / data.y.size(0)
-                total_precision += precision_score(data.y.cpu(), val_preds.cpu(), average="weighted")
-                total_recall += recall_score(data.y.cpu(), val_preds.cpu(), average="weighted")
-                total_f1 += f1_score(data.y.cpu(), val_preds.cpu(), average="weighted")
-                data_y += data.y.cpu()
+                total_accuracy += val_correct / labels.size(0)
+                total_precision += precision_score(labels.cpu(), val_preds.cpu(), average="weighted")
+                total_recall += recall_score(labels.cpu(), val_preds.cpu(), average="weighted")
+                total_f1 += f1_score(labels.cpu(), val_preds.cpu(), average="weighted")
+                data_y += labels.cpu()
                 pred_y += val_preds.cpu()
 
         cm = confusion_matrix(data_y, pred_y)
