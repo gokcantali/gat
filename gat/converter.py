@@ -49,7 +49,6 @@ def create_tdg_graph(X_window, y_window):
         source = f"{row['ip_source']}:{row['port_source']}"
         destination = f"{row['ip_destination']}:{row['port_destination']}"
         edges.append([node_mapping[source], node_mapping[destination]])
-        edge_labels.append(label)
         if source not in node_to_source_edge_labels:
             node_to_source_edge_labels[source] = []
         node_to_source_edge_labels[source].append(label)
@@ -63,11 +62,14 @@ def create_tdg_graph(X_window, y_window):
     node_df = ip_encoder(node_df, 'ip', False)
     node_df['port'] = node_df['port'].replace('', 0).fillna(0).astype(int)
 
+    edge_attr = X_window[["ack_flag", "psh_flag"]]
+
     return Data(
         x=torch.tensor(node_df.values, dtype=torch.float),
         edge_index=edge_index,
-        edge_attr=torch.tensor(edge_labels, dtype=torch.float),
-        y=torch.tensor(node_labels)
+        edge_attr=torch.tensor(edge_attr.values, dtype=torch.long),
+        #y=torch.tensor(node_labels)
+        y=torch.tensor(edge_labels)
     )
 
 
