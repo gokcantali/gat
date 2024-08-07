@@ -72,11 +72,13 @@ def initialize_gat_model(train_data, y_train):
 def initialize_gcn_model(train_data, num_classes, batch_mode=False):
     config = Config()
 
-    first_dataset = train_data.dataset[0]
-    num_of_features = (
-        first_dataset.x.shape[1] * 2 + first_dataset.edge_attr.shape[1]
-        if batch_mode else train_data.num_features
-    )
+    if batch_mode is True:
+        first_dataset = train_data.dataset[0]
+        num_of_features = (
+            first_dataset.x.shape[1] * 2 + first_dataset.edge_attr.shape[1]
+        )
+    else:
+        num_of_features = train_data.num_features
 
     model = GCN(
         optimizer=config.optimizer,
@@ -101,8 +103,14 @@ if __name__ == "__main__":
     #gat_model.train_model(train_data, test_data)
     #print("=================")
 
-    print("GCN MODEL")
-    train_data, test_data = split_data_for_tdg()
-    gcn_model = initialize_gcn_model(train_data, num_classes=2, batch_mode=True)
-    gcn_model.train_model(train_data, test_data, batch_mode=True)
+    #print("GCN MODEL - TDG")
+    #train_data, test_data = split_data_for_tdg()
+    #gcn_model = initialize_gcn_model(train_data, num_classes=2, batch_mode=True)
+    #gcn_model.train_model(train_data, test_data, batch_mode=True)
+    #print("=================")
+
+    print("GCN MODEL - kNN")
+    train_data, test_data, y_train = split_data()
+    gcn_model = initialize_gcn_model(train_data, y_train)
+    gcn_model.train_model(train_data, test_data)
     print("=================")

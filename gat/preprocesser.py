@@ -56,8 +56,8 @@ def preprocess_df(use_diversity_index=True):
 
 def preprocess_X(df, use_diversity_index=True):
     X = df.drop(columns=["is_anomaly"])
-    X["timestamp"] = pd.to_datetime(X["timestamp"], utc=True)
-    X.sort_values(by=["ip_source", "timestamp"], inplace=True)
+    #X["timestamp"] = pd.to_datetime(X["timestamp"], utc=True)
+    #X.sort_values(by=["ip_source", "timestamp"], inplace=True)
 
     encoder_map = {
         "ip_source": ip_encoder,
