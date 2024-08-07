@@ -35,6 +35,7 @@ if __name__ == '__main__':
 
     df = preprocess_df(use_diversity_index=False)
     X = preprocess_X(df, use_diversity_index=False)
+    X = X.drop(columns=['source_pod_label_normalized'])
     y = preprocess_y(df)
 
     for _ in range(TRIALS):
@@ -42,9 +43,9 @@ if __name__ == '__main__':
             X, y, test_size=TEST_RATIO,
             stratify=y, #random_state=RANDOM_STATE
         )
-        #rf = train_random_forest(X_train, y_train, max_depth=4, n_estimators=150)
-        #cm = test_random_forest(rf, X_test, y_test)
-        svm = train_svm(X_train, y_train, dual='auto')
-        cm = test_svm(svm, X_test, y_test)
+        rf = train_random_forest(X_train, y_train, max_depth=4, n_estimators=100)
+        cm = test_random_forest(rf, X_test, y_test)
+        #svm = train_svm(X_train, y_train, dual='auto')
+        #cm = test_svm(svm, X_test, y_test)
 
         print(cm)
