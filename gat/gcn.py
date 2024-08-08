@@ -35,28 +35,19 @@ class GCN(torch.nn.Module):
         )
 
     def forward(self, data):
-        x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
-        #x = self.dropout(x)
+        x, edge_index = data.x, data.edge_index
+        x = self.dropout(x)
 
-        x_src, x_dst = x[edge_index[0]], x[edge_index[1]]
-        edge_data = torch.cat([x_src, edge_attr, x_dst], dim=-1)
+        x = F.elu(self.conv1(x, edge_index))
+        x = self.bn1(x)
+        x = self.dropout(x)
 
-        # TODO: Refactor this code piece
-        if edge_index.max() > edge_data.shape[0]:
-            print("might be a problem")
-            for i in range(edge_index.max() - edge_data.shape[0] + 1):
-                new_row = torch.Tensor(1, edge_data.shape[1])
-                edge_data = torch.cat([edge_data, new_row], dim=0)
+        x = F.elu(self.conv2(x, edge_index))
+        x = self.bn2(x)
+        x = self.dropout(x)
 
-        edge_data = F.elu(self.conv1(edge_data, edge_index))
-        edge_data = self.bn1(edge_data)
-        #x = self.dropout(x)
-        edge_data = F.elu(self.conv2(edge_data, edge_index))
-        edge_data = self.bn2(edge_data)
-        #x = self.dropout(x)
-        edge_data = self.conv3(edge_data, edge_index)
-
-        return F.log_softmax(edge_data, dim=-1)
+        x = self.conv3(x, edge_index)
+        return F.log_softmax(x, dim=-1)
 
     def train_epoch(self, data):
         self.train()
@@ -140,10 +131,6 @@ class GCN(torch.nn.Module):
             with torch.no_grad():
                 val_out = self(data)
                 labels = data.y
-                # TODO: Refactor this piece
-                if val_out.shape[0] > labels.shape[0]:
-                    num_of_new_labels = val_out.shape[0] - labels.shape[0]
-                    labels = torch.cat([labels, torch.zeros(num_of_new_labels, dtype=torch.long)], dim=0)
 
                 total_loss += F.nll_loss(val_out, labels).item()
 

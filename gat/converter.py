@@ -5,6 +5,7 @@ from numpy import average
 from sklearn.neighbors import kneighbors_graph
 from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
+from torch_geometric.transforms.line_graph import LineGraph
 
 from gat.encoder import ip_encoder
 
@@ -62,15 +63,25 @@ def create_tdg_graph(X_window, y_window):
     node_df = ip_encoder(node_df, 'ip', False)
     node_df['port'] = node_df['port'].replace('', 0).fillna(0).astype(int)
 
-    edge_attr = X_window[["ack_flag", "psh_flag"]]
+    edge_attr = X_window[[
+        "ip_source", "port_source",
+        "ip_destination", "port_destination",
+        "ack_flag", "psh_flag"
+    ]]
+    edge_attr = ip_encoder(edge_attr, "ip_source", False)
+    edge_attr = ip_encoder(edge_attr, "ip_destination", False)
+    edge_attr['port_source'] = edge_attr['port_source'].replace('', 0).fillna(0).astype(int)
+    edge_attr['port_destination'] = edge_attr['port_destination'].replace('', 0).fillna(0).astype(int)
+    edge_attr['ack_flag'] = edge_attr['ack_flag'].replace({"True": 1, "False": 0}).fillna(0).astype(int)
+    edge_attr['psh_flag'] = edge_attr['psh_flag'].replace({"True": 1, "False": 0}).fillna(0).astype(int)
 
-    return Data(
+    lg = LineGraph()
+    return lg(Data(
         x=torch.tensor(node_df.values, dtype=torch.float),
         edge_index=edge_index,
-        edge_attr=torch.tensor(edge_attr.values, dtype=torch.long),
-        #y=torch.tensor(node_labels)
-        y=torch.tensor(edge_labels)
-    )
+        edge_attr=torch.tensor(edge_attr.values, dtype=torch.float),
+        y=torch.tensor(edge_labels, dtype=torch.long)
+    ))
 
 
 def create_tdg_graphs_using_window(df, window_size='1Min'):
