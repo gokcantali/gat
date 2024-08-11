@@ -17,6 +17,17 @@ def test_random_forest(clf, test_data, test_label):
     return confusion_matrix(test_label, predicted_label)
 
 
+def report_cm_results(conf_matrix):
+    tn, fp, fn, tp = conf_matrix.ravel()
+    return {
+        "tp": tp, "fp": fp, "fn": fn, "tn": tn,
+        "precision": tp / (tp + fp),
+        "recall": tp / (tp + fn),
+        "accuracy": (tp + tn) / (tp + tn + fn + fp),
+        "f1": 2 * tp / (2 * tp + fp + fn),
+    }
+
+
 def train_svm(train_data, train_label, **kwargs):
     clf = LinearSVC(**kwargs)
     clf.fit(train_data, train_label)
@@ -36,6 +47,7 @@ if __name__ == '__main__':
     df = preprocess_df(use_diversity_index=False)
     X = preprocess_X(df, use_diversity_index=False)
     X = X.drop(columns=['source_pod_label_normalized'])
+    X = X.drop(columns=['destination_pod_label_normalized'])
     y = preprocess_y(df)
 
     for _ in range(TRIALS):
@@ -45,7 +57,10 @@ if __name__ == '__main__':
         )
         rf = train_random_forest(X_train, y_train, max_depth=4, n_estimators=100)
         cm = test_random_forest(rf, X_test, y_test)
-        #svm = train_svm(X_train, y_train, dual='auto')
-        #cm = test_svm(svm, X_test, y_test)
+        print(report_cm_results(cm))
+
+        # svm = train_svm(X_train, y_train, dual='auto')
+        # cm = test_svm(svm, X_test, y_test)
+        # print(report_cm_results(cm))
 
         print(cm)

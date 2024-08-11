@@ -3,17 +3,46 @@ import time
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from numpy import mean
 from sklearn.metrics import (
     confusion_matrix,
     f1_score,
     precision_score,
-    recall_score,
+    recall_score
 )
 from torch_geometric.nn import GCNConv
 
 from gat.analysis import plot_metrics, print_epoch_stats
 from gat.data_models import Metrics
 
+
+def calculate_metrics(y_true, y_pred):
+    def _safe_division(n, d):
+        # handles zero-by-division
+        return n / d if d else 0.0
+
+    tp, tn, fp, fn = 0, 0, 0, 0
+
+    for ind in range(len(y_true)):
+        truth = y_true[ind]
+        pred = y_pred[ind]
+        if (truth, pred) == (1, 1):
+            tp += 1
+        elif (truth, pred) == (0, 1):
+            fp += 1
+        elif (truth, pred) == (1, 0):
+            fn += 1
+        elif (truth, pred) == (0, 0):
+            tn += 1
+        else:
+            pass
+
+    return {
+        "accuracy": _safe_division((tp + tn), (tp + tn + fp + fn)),
+        "precision": _safe_division(tp, (tp + fp)),
+        "recall": _safe_division(tp, (tp + fn)),
+        "f1_score": _safe_division(2 * tp, (2 * tp + fp + fn)),
+    }
 
 class GCN(torch.nn.Module):
     def __init__(
@@ -38,11 +67,11 @@ class GCN(torch.nn.Module):
         x, edge_index = data.x, data.edge_index
         x = self.dropout(x)
 
-        x = F.elu(self.conv1(x, edge_index))
+        x = F.relu(self.conv1(x, edge_index))
         x = self.bn1(x)
         x = self.dropout(x)
 
-        x = F.elu(self.conv2(x, edge_index))
+        x = F.relu(self.conv2(x, edge_index))
         x = self.bn2(x)
         x = self.dropout(x)
 
@@ -70,34 +99,37 @@ class GCN(torch.nn.Module):
     def train_epoch_batch_mode(self, data_loader):
         self.train()
 
-        num_of_batches = len(data_loader)
-        total_loss = 0
-        total_accuracy = 0.0
-        total_precision = 0.0
-        total_recall = 0.0
-        total_f1 = 0.0
+        losses = []
+        predictions = []
+        ground_truths = []
+        start_time = time.time()
         for data in data_loader:
             self.optimizer.zero_grad()
             out = self(data)
             loss = F.nll_loss(out, data.y)
+            losses.append(loss.detach().item())
+
             loss.backward()
             self.optimizer.step()
-            total_loss += loss.item()
 
             _, preds = out.max(dim=1)
-            correct = preds.eq(data.y).sum().item()
+            predictions += preds.cpu()
+            ground_truths += data.y.cpu()
 
-            total_accuracy += correct / data.y.size(0)
-            total_precision += precision_score(data.y.cpu(), preds.cpu(), average="weighted")
-            total_recall += recall_score(data.y.cpu(), preds.cpu(), average="weighted")
-            total_f1 += f1_score(data.y.cpu(), preds.cpu(), average="weighted")
+        end_time = time.time()
+        print(f"training time: {(end_time-start_time)}")
+
+        start_time = time.time()
+        metrics = calculate_metrics(ground_truths, predictions)
+        end_time=time.time()
+        print(f"metric calculation time: {(end_time - start_time)}")
 
         return (
-            total_loss / num_of_batches,
-            total_accuracy / num_of_batches,
-            total_precision / num_of_batches,
-            total_recall / num_of_batches,
-            total_f1 / num_of_batches
+            mean(losses),
+            metrics["accuracy"],
+            metrics["precision"],
+            metrics["recall"],
+            metrics["f1_score"],
         )
 
     def validate_epoch(self, data):
@@ -127,6 +159,7 @@ class GCN(torch.nn.Module):
         total_f1 = 0.0
         data_y = []
         pred_y = []
+        start_time = time.time()
         for data in data_loader:
             with torch.no_grad():
                 val_out = self(data)
@@ -138,13 +171,17 @@ class GCN(torch.nn.Module):
                 val_correct = val_preds.eq(labels).sum().item()
 
                 total_accuracy += val_correct / labels.size(0)
-                total_precision += precision_score(labels.cpu(), val_preds.cpu(), average="weighted")
-                total_recall += recall_score(labels.cpu(), val_preds.cpu(), average="weighted")
-                total_f1 += f1_score(labels.cpu(), val_preds.cpu(), average="weighted")
+                total_precision += precision_score(labels.cpu(), val_preds.cpu(), average="binary", zero_division=1)
+                total_recall += recall_score(labels.cpu(), val_preds.cpu(), average="binary", zero_division=1)
+                total_f1 += f1_score(labels.cpu(), val_preds.cpu(), average="binary", zero_division=1)
                 data_y += labels.cpu()
                 pred_y += val_preds.cpu()
 
         cm = confusion_matrix(data_y, pred_y)
+        tn, fp, fn, tp = cm.ravel()
+        print(f"tp: {tp} - tn: {tn}, fp: {fp}, fn: {fn}")
+        end_time = time.time()
+        print(f"validation time: {(end_time-start_time)}")
 
         return (
             total_loss / num_of_batches,

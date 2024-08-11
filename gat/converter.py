@@ -4,10 +4,11 @@ import torch
 from numpy import average
 from sklearn.neighbors import kneighbors_graph
 from torch_geometric.data import Data
-from torch_geometric.loader import DataLoader
+from torch_geometric.loader import DataLoader, RandomNodeLoader
 from torch_geometric.transforms.line_graph import LineGraph
 
-from gat.encoder import ip_encoder
+from gat.encoder import ip_encoder, string_encoder
+from gat.preprocesser import preprocess_X
 
 
 def create_knn_graph(X, k=5):
@@ -66,7 +67,9 @@ def create_tdg_graph(X_window, y_window):
     edge_attr = X_window[[
         "ip_source", "port_source",
         "ip_destination", "port_destination",
-        "ack_flag", "psh_flag"
+        "ack_flag", "psh_flag",
+        "source_pod_label", "destination_pod_label",
+        "source_namespace_label", "destination_namespace_label",
     ]]
     edge_attr = ip_encoder(edge_attr, "ip_source", False)
     edge_attr = ip_encoder(edge_attr, "ip_destination", False)
@@ -74,23 +77,54 @@ def create_tdg_graph(X_window, y_window):
     edge_attr['port_destination'] = edge_attr['port_destination'].replace('', 0).fillna(0).astype(int)
     edge_attr['ack_flag'] = edge_attr['ack_flag'].replace({"True": 1, "False": 0}).fillna(0).astype(int)
     edge_attr['psh_flag'] = edge_attr['psh_flag'].replace({"True": 1, "False": 0}).fillna(0).astype(int)
+    edge_attr = string_encoder(edge_attr, 'source_pod_label')
+    edge_attr = string_encoder(edge_attr, 'destination_pod_label')
+    edge_attr = string_encoder(edge_attr, 'source_namespace_label')
+    edge_attr = string_encoder(edge_attr, 'destination_namespace_label')
 
-    lg = LineGraph()
-    return lg(Data(
+    lg = LineGraph(force_directed=True)
+    inverted_graph = lg(Data(
         x=torch.tensor(node_df.values, dtype=torch.float),
         edge_index=edge_index,
         edge_attr=torch.tensor(edge_attr.values, dtype=torch.float),
         y=torch.tensor(edge_labels, dtype=torch.long)
     ))
+    inverted_graph.num_nodes = inverted_graph.x.shape[0]
+    return inverted_graph
 
 
-def create_tdg_graphs_using_window(df, window_size='1Min'):
+def create_tdg_graphs_using_window(df, window_size='5Min'):
     df_list = [g for _, g in df.groupby(pd.Grouper(key='timestamp', freq=window_size))]
+
     return DataLoader(
         [
-            create_tdg_graph(
-                X_window=df_window.drop(columns=['is_anomaly']),
-                y_window=df_window['is_anomaly'].replace({"True": 1, "False": 0}).astype(int)
+            # create_tdg_graph(
+            #     X_window=df_window.drop(columns=['is_anomaly']),
+            #     y_window=df_window['is_anomaly'].replace({"True": 1, "False": 0}).astype(int)
+            # ) for df_window in df_list if df_window.shape[0] > 0
+            convert_to_graph(
+                X=preprocess_X(df_window),
+                y=df_window['is_anomaly'].replace({"True": 1, "False": 0}).astype(int)
             ) for df_window in df_list if df_window.shape[0] > 0
         ],
     )
+
+
+def create_randomly_partitioned_tdg_graphs(df):
+    return RandomNodeLoader(
+        create_tdg_graph(
+            X_window=df.drop(columns=['is_anomaly']),
+            y_window=df['is_anomaly'].replace({"True": 1, "False": 0}).astype(int)
+        ),
+        num_parts=300,
+        shuffle=True
+    )
+
+
+def create_randomly_partitioned_knn_graphs(df):
+    graph = convert_to_graph(
+        X=preprocess_X(df),
+        y=df['is_anomaly'].replace({"True": 1, "False": 0}).astype(int)
+    )
+
+    return RandomNodeLoader(graph, num_parts=150, shuffle=True)
