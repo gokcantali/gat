@@ -31,5 +31,6 @@ venv.bak/
 .vscode/
 
 /data/*.csv
+data/
 results/
 best_model.pth
