@@ -173,15 +173,18 @@ if __name__ == "__main__":
     # save_graph_data(graph, 'traces-3ddos-2zap-1scan.75percent.pt')
 
     graph_data = load_graph_data('traces-3ddos-2zap-1scan.100percent.pt')
-    num_parts = 1000
+    num_parts = 400
 
     batches = RandomNodeLoader(graph_data, num_parts=num_parts, shuffle=True)
     train_data, test_data = [], []
     for ind, batch in enumerate(batches):
         if ind < TEST_SIZE * num_parts:
-            train_data.append(batch)
-        else:
             test_data.append(batch)
+        else:
+            train_data.append(batch)
 
     gcn_model = initialize_gcn_model(2, 25)
     gcn_model.train_model(train_data, test_data, batch_mode=True)
+
+    # gat_model = initialize_gat_model(graph_data, graph_data.y)
+    # gat_model.train_model(graph_data, graph_data)

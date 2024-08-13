@@ -65,14 +65,14 @@ class GCN(torch.nn.Module):
 
     def forward(self, data):
         x, edge_index = data.x, data.edge_index
-        x = self.dropout(x)
+        #x = self.dropout(x)
 
-        x = F.relu(self.conv1(x, edge_index))
-        x = self.bn1(x)
-        x = self.dropout(x)
+        x = F.elu(self.conv1(x, edge_index))
+        #x = self.bn1(x)
+        #x = self.dropout(x)
 
-        x = F.relu(self.conv2(x, edge_index))
-        x = self.bn2(x)
+        x = F.elu(self.conv2(x, edge_index))
+        #x = self.bn2(x)
         x = self.dropout(x)
 
         x = self.conv3(x, edge_index)
