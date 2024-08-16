@@ -173,7 +173,7 @@ def run(config=None, mode='train'):
     # )
     # save_graph_data(graph, 'traces-3ddos-2zap-1scan.75percent.pt')
 
-    graph_data = load_graph_data('traces-3ddos-2zap-1scan.100percent.pt')
+    graph_data = load_graph_data('sampled-traces-3ddos-2zap-1scan.pt')
     graph_data.x[:, 18] = torch.zeros_like(graph_data.x[:, 18])
     graph_data.x[:, 19] = torch.zeros_like(graph_data.x[:, 19])
     num_parts = 1000
