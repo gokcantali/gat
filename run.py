@@ -2,6 +2,7 @@ import os
 
 import numpy as np
 import torch
+from sklearn.metrics import confusion_matrix
 from sklearn.model_selection import train_test_split
 from torch_geometric.loader import DataLoader, RandomNodeLoader
 
@@ -12,8 +13,9 @@ from gat.model import GAT
 from gat.gcn import GCN
 from gat.preprocesser import preprocess_df, preprocess_X, preprocess_y, construct_port_scan_label
 
-TEST_SIZE = 0.25
-RANDOM_STATE = 42
+TEST_SIZE = 0.10
+VALIDATION_SIZE = 0.10
+TRAIN_SIZE = 1 - VALIDATION_SIZE - TEST_SIZE
 
 
 def get_device():
@@ -100,7 +102,7 @@ def initialize_gcn_model(num_classes, num_of_features=25, config=None):
     return model
 
 
-def run(config=None):
+def run(config=None, mode='train'):
     if not os.path.exists("./results"):
         os.makedirs("./results")
 
@@ -177,16 +179,28 @@ def run(config=None):
     num_parts = 1000
 
     batches = RandomNodeLoader(graph_data, num_parts=num_parts, shuffle=True)
-    train_data, test_data = [], []
+    train_data, validation_data, test_data = [], [], []
+    y_true = []
     for ind, batch in enumerate(batches):
         if ind < TEST_SIZE * num_parts:
             test_data.append(batch)
+            y_true += batch.y
+        elif ind < (TEST_SIZE + VALIDATION_SIZE) * num_parts:
+            validation_data.append(batch)
         else:
             train_data.append(batch)
 
-    gcn_model = initialize_gcn_model(2, 25,  config=config)
-    return gcn_model.train_model(train_data, test_data, batch_mode=True)
+    gcn_model = initialize_gcn_model(2, 25)
+    training_metrics = gcn_model.train_model(train_data, validation_data, batch_mode=True)
+    print("=======TRAINING COMPLETED!=======\n")
+    if mode == 'train':
+        return training_metrics
+
+    y_pred = gcn_model.test_model_batch_mode(test_data)
+    print("=====TEST RESULTS=======")
+    print(confusion_matrix(y_true, y_pred))
+    return confusion_matrix(y_true, y_pred)
 
 
 if __name__ == "__main__":
-    run()
+    run(mode='test')

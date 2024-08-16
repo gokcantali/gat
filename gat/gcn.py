@@ -256,3 +256,12 @@ class GCN(torch.nn.Module):
         out = self(data)
         _, pred = out.max(dim=1)
         return pred
+
+    def test_model_batch_mode(self, data):
+        predictions = []
+        for batch in data:
+            out = self(batch)
+            _, pred = out.max(dim=1)
+            predictions += pred
+
+        return predictions
