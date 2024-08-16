@@ -174,7 +174,7 @@ def run(config=None):
     graph_data = load_graph_data('traces-3ddos-2zap-1scan.100percent.pt')
     graph_data.x[:, 18] = torch.zeros_like(graph_data.x[:, 18])
     graph_data.x[:, 19] = torch.zeros_like(graph_data.x[:, 19])
-    num_parts = 20
+    num_parts = 1000
 
     batches = RandomNodeLoader(graph_data, num_parts=num_parts, shuffle=True)
     train_data, test_data = [], []
@@ -184,9 +184,7 @@ def run(config=None):
         else:
             train_data.append(batch)
 
-    gcn_model = initialize_gcn_model(
-        2, 25, config=config
-    )
+    gcn_model = initialize_gcn_model(2, 25,  config=config)
     return gcn_model.train_model(train_data, test_data, batch_mode=True)
 
 
