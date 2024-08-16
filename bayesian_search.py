@@ -13,10 +13,11 @@ from gat.converter import convert_to_graph
 from gat.data_models import Metrics
 from gat.model import GAT
 from gat.preprocesser import preprocess_df, preprocess_X, preprocess_y
+from run import run
 
 TEST_SIZE = 0.25
 RANDOM_STATE = 42
-NUM_RUNS = 1  # Number of runs for each configuration to average the metrics
+NUM_RUNS = 2  # Number of runs for each configuration to average the metrics
 GLOBAL_X = None
 GLOBAL_Y = None
 
@@ -73,9 +74,7 @@ def initialize_model(train_data, y_train, config):
 def run_experiment(config):
     metrics_list = []
     for _ in range(NUM_RUNS):
-        train_data, test_data, y_train, y_test = split_data()
-        model = initialize_model(train_data, y_train, config)
-        metrics: Metrics = model.train_model(train_data, test_data)
+        metrics: Metrics = run(config)
         metrics_list.append(metrics)
 
     avg_val_accuracy = np.mean([m.val_accuracy[-1] for m in metrics_list])
@@ -113,12 +112,12 @@ def run_experiment(config):
 
 # Define the search space for Bayesian Optimization
 space = [
-    Categorical([torch.optim.AdamW], name="optimizer"),
+    Categorical([torch.optim.AdamW, torch.optim.Adam], name="optimizer"),
     Real(0.035, 0.05, name="lr"),
     Real(4.5e-4, 6e-4, name="weight_decay"),
-    Integer(25, 35, name="epochs"),
-    Integer(3, 7, name="patience"),
-    Integer(24, 40, name="hidden_dim"),
+    Integer(25, 40, name="epochs"),
+    Integer(2, 10, name="patience"),
+    Integer(20, 50, name="hidden_dim"),
     Real(0.4, 0.45, name="dropout")
 ]
 

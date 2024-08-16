@@ -27,12 +27,12 @@ def get_device():
 
 class Config:
     optimizer = torch.optim.AdamW
-    lr = 0.0425
-    weight_decay = 0.0004807430799298252
-    epochs = 30
-    patience = 5
-    hidden_dim = 30
-    dropout = 0.425
+    lr = 0.03524
+    weight_decay = 0.00048463407384332236
+    epochs = 29
+    patience = 7
+    hidden_dim = 38
+    dropout = 0.4416
 
 def split_data():
     print("Start feature engineering...")
@@ -82,8 +82,9 @@ def initialize_gat_model(train_data, y_train):
     return model
 
 
-def initialize_gcn_model(num_classes, num_of_features=25):
-    config = Config()
+def initialize_gcn_model(num_classes, num_of_features=25, config=None):
+    if config is None:
+        config = Config()
 
     model = GCN(
         optimizer=config.optimizer,
@@ -99,9 +100,7 @@ def initialize_gcn_model(num_classes, num_of_features=25):
     return model
 
 
-if __name__ == "__main__":
-    device = get_device()
-
+def run(config=None):
     if not os.path.exists("./results"):
         os.makedirs("./results")
 
@@ -173,15 +172,23 @@ if __name__ == "__main__":
     # save_graph_data(graph, 'traces-3ddos-2zap-1scan.75percent.pt')
 
     graph_data = load_graph_data('traces-3ddos-2zap-1scan.100percent.pt')
-    num_parts = 1000
+    graph_data.x[:, 18] = torch.zeros_like(graph_data.x[:, 18])
+    graph_data.x[:, 19] = torch.zeros_like(graph_data.x[:, 19])
+    num_parts = 20
 
     batches = RandomNodeLoader(graph_data, num_parts=num_parts, shuffle=True)
     train_data, test_data = [], []
     for ind, batch in enumerate(batches):
         if ind < TEST_SIZE * num_parts:
-            train_data.append(batch)
-        else:
             test_data.append(batch)
+        else:
+            train_data.append(batch)
 
-    gcn_model = initialize_gcn_model(2, 25)
-    gcn_model.train_model(train_data, test_data, batch_mode=True)
+    gcn_model = initialize_gcn_model(
+        2, 25, config=config
+    )
+    return gcn_model.train_model(train_data, test_data, batch_mode=True)
+
+
+if __name__ == "__main__":
+    run()

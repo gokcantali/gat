@@ -53,9 +53,7 @@ class GCN(torch.nn.Module):
         self.epochs = epochs
         self.patience = patience
         self.conv1 = GCNConv(num_features, hidden_dim)
-        self.bn1 = nn.BatchNorm1d(hidden_dim)
         self.conv2 = GCNConv(hidden_dim, hidden_dim)
-        self.bn2 = nn.BatchNorm1d(hidden_dim)
         self.conv3 = GCNConv(hidden_dim, num_classes)
         self.dropout = nn.Dropout(p=dropout)
         self.optimizer = optimizer(self.parameters(), lr=lr, weight_decay=weight_decay)
@@ -65,14 +63,14 @@ class GCN(torch.nn.Module):
 
     def forward(self, data):
         x, edge_index = data.x, data.edge_index
-        x = self.dropout(x)
+        #x = self.dropout(x)
 
         x = F.relu(self.conv1(x, edge_index))
-        x = self.bn1(x)
-        x = self.dropout(x)
+        #x = self.bn1(x)
+        #x = self.dropout(x)
 
         x = F.relu(self.conv2(x, edge_index))
-        x = self.bn2(x)
+        #x = self.bn3(x)
         x = self.dropout(x)
 
         x = self.conv3(x, edge_index)

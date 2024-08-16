@@ -44,8 +44,8 @@ if __name__ == '__main__':
     TRIALS = 10
     #RANDOM_STATE = 42
 
-    df = preprocess_df(use_diversity_index=False)
-    X = preprocess_X(df, use_diversity_index=False)
+    df = preprocess_df(use_diversity_index=True)
+    X = preprocess_X(df, use_diversity_index=True)
     X = X.drop(columns=['source_pod_label_normalized'])
     X = X.drop(columns=['destination_pod_label_normalized'])
     y = preprocess_y(df)
