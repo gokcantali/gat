@@ -109,24 +109,25 @@ def train_random_forest_with_k_fold_cv(X_train_val, y_train_val, is_verbose=True
 
 def train_svm_with_k_fold_cv(X_train_val, y_train_val, is_verbose=True):
     parameters = {
-        "kernel": ["linear", "poly", "rbf", "sigmoid"],
-        "gamma": ["scale", "auto"],
-        "degree": [3, 4, 5, 6, 7],
+        "C": [0.01, 0.1, 1, 10],
+        "penalty": ["l2"],
+        "tol": [1e-4, 1e-3],
     }
     n_splits = int((1 - TEST_RATIO) / VALIDATION_RATIO)
+    skf = StratifiedKFold(n_splits=n_splits)
 
     start_time = time.time()
-    skf = StratifiedKFold(n_splits=n_splits)
 
     best_score = 0.0
     best_config = {}
-    for kernel in parameters["kernel"]:
-        for gamma in parameters["gamma"]:
-            for degree in parameters["degree"]:
-                svc = SVC(
-                    kernel=kernel,
-                    gamma=gamma,
-                    degree=degree
+    for c in parameters["C"]:
+        for penalty in parameters["penalty"]:
+            for tol in parameters["tol"]:
+                svc = LinearSVC(
+                    C=c,
+                    penalty=penalty,
+                    tol=tol,
+                    dual=True
                 )
 
                 scores = []
@@ -144,9 +145,9 @@ def train_svm_with_k_fold_cv(X_train_val, y_train_val, is_verbose=True):
                 if mean(scores) > best_score:
                     best_score = mean(scores)
                     best_config = {
-                        "kernel": kernel,
-                        "gamma": gamma,
-                        "degree": degree
+                        "C": c,
+                        "penalty": penalty,
+                        "tol": tol
                     }
 
     end_time = time.time()
@@ -156,7 +157,7 @@ def train_svm_with_k_fold_cv(X_train_val, y_train_val, is_verbose=True):
         print("Best Parameters based on Grid Search:")
         print(best_config)
 
-    svc = SVC(**best_config)
+    svc = LinearSVC(**best_config, dual=True)
     svc.fit(X_train_val, y_train_val)
 
     return svc
