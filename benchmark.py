@@ -1,7 +1,8 @@
 import time
 
+from numpy import mean
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.svm import LinearSVC
+from sklearn.svm import LinearSVC, SVC
 from sklearn.metrics import confusion_matrix
 from sklearn.model_selection import train_test_split, StratifiedKFold, GridSearchCV
 
@@ -57,26 +58,109 @@ def test_svm(clf, test_data, test_label):
 
 
 def train_random_forest_with_k_fold_cv(X_train_val, y_train_val, is_verbose=True):
-    rfc = RandomForestClassifier()
     parameters = {
-        "max_depth": [3, 5],
-        "n_estimators": [100, 200],
+        "max_depth": [3, 4, 5, 6, 7, 8, 9, 10],
+        "n_estimators": [20, 50, 75, 100, 150, 250, 400],
     }
+    n_splits = int((1 - TEST_RATIO) / VALIDATION_RATIO)
 
     start_time = time.time()
-    n_splits = int((1 - TEST_RATIO) / VALIDATION_RATIO)
-    clf = GridSearchCV(rfc, parameters,
-        cv=n_splits, scoring="f1", refit=True, n_jobs=8
-    )
-    clf.fit(X_train_val, y_train_val)
+    skf = StratifiedKFold(n_splits=n_splits)
+
+    best_score = 0.0
+    best_config = {}
+    for max_depth in parameters["max_depth"]:
+        for n_estimators in parameters["n_estimators"]:
+            rfc = RandomForestClassifier(
+                max_depth=max_depth, n_estimators=n_estimators
+            )
+
+            scores = []
+            for ind, (train_ind, val_ind) in enumerate(skf.split(X_train_val, y_train_val)):
+                X_train = X_train_val[X_train_val.index.isin(train_ind)]
+                y_train = y_train_val[y_train_val.index.isin(train_ind)]
+                X_val = X_train_val[X_train_val.index.isin(val_ind)]
+                y_val = y_train_val[y_train_val.index.isin(val_ind)]
+
+                rfc.fit(X_train, y_train)
+
+                score = rfc.score(X_val, y_val)
+                scores.append(score)
+
+            if mean(scores) > best_score:
+                best_score = mean(scores)
+                best_config = {
+                    "max_depth": max_depth,
+                    "n_estimators": n_estimators,
+                }
+
     end_time = time.time()
 
     if is_verbose:
         print(f"Cross validation time: {end_time - start_time} seconds")
         print("Best Parameters based on Grid Search:")
-        print(sorted(clf.cv_results_))
+        print(best_config)
+
+    clf = RandomForestClassifier(**best_config)
+    clf.fit(X_train_val, y_train_val)
 
     return clf
+
+
+def train_svm_with_k_fold_cv(X_train_val, y_train_val, is_verbose=True):
+    parameters = {
+        "kernel": ["linear", "poly", "rbf", "sigmoid"],
+        "gamma": ["scale", "auto"],
+        "degree": [3, 4, 5, 6, 7],
+    }
+    n_splits = int((1 - TEST_RATIO) / VALIDATION_RATIO)
+
+    start_time = time.time()
+    skf = StratifiedKFold(n_splits=n_splits)
+
+    best_score = 0.0
+    best_config = {}
+    for kernel in parameters["kernel"]:
+        for gamma in parameters["gamma"]:
+            for degree in parameters["degree"]:
+                svc = SVC(
+                    kernel=kernel,
+                    gamma=gamma,
+                    degree=degree
+                )
+
+                scores = []
+                for ind, (train_ind, val_ind) in enumerate(skf.split(X_train_val, y_train_val)):
+                    X_train = X_train_val[X_train_val.index.isin(train_ind)]
+                    y_train = y_train_val[y_train_val.index.isin(train_ind)]
+                    X_val = X_train_val[X_train_val.index.isin(val_ind)]
+                    y_val = y_train_val[y_train_val.index.isin(val_ind)]
+
+                    svc.fit(X_train, y_train)
+
+                    score = svc.score(X_val, y_val)
+                    scores.append(score)
+
+                if mean(scores) > best_score:
+                    best_score = mean(scores)
+                    best_config = {
+                        "kernel": kernel,
+                        "gamma": gamma,
+                        "degree": degree
+                    }
+
+    end_time = time.time()
+
+    if is_verbose:
+        print(f"Cross validation time: {end_time - start_time} seconds")
+        print("Best Parameters based on Grid Search:")
+        print(best_config)
+
+    svc = SVC(**best_config)
+    svc.fit(X_train_val, y_train_val)
+
+    return svc
+
 
 if __name__ == '__main__':
     #RANDOM_STATE = 42
@@ -85,6 +169,11 @@ if __name__ == '__main__':
     X = preprocess_X(df, use_diversity_index=True)
     X = X.drop(columns=['source_pod_label_normalized'])
     X = X.drop(columns=['destination_pod_label_normalized'])
+    # X = X.drop(columns=['source_namespace_label_normalized'])
+    # X = X.drop(columns=['destination_namespace_label_normalized'])
+    # X = X.drop(columns=['diversity_index'])
+    # X = X.drop(columns=['ack_flag'])
+    # X = X.drop(columns=['psh_flag'])
     y = preprocess_y(df)
 
     for _ in range(TRIALS):
@@ -92,14 +181,23 @@ if __name__ == '__main__':
             X, y, test_size=TEST_RATIO,
             stratify=y, #random_state=RANDOM_STATE
         )
-        rf = train_random_forest_with_k_fold_cv(
-            X_train_val, y_train_val, is_verbose=True
-        )
-        cm = test_random_forest(rf, X_test, y_test)
-        print(report_cm_results(cm))
+        # rf = train_random_forest_with_k_fold_cv(
+        #     X_train_val, y_train_val, is_verbose=True
+        # )
+
+        # rf = train_random_forest(
+        #     X_train_val, y_train_val,
+        #     max_depth=6, n_estimators=100
+        # )
+        # cm = test_random_forest(rf, X_test, y_test)
+        # print(report_cm_results(cm))
 
         # svm = train_svm(X_train, y_train, dual='auto')
         # cm = test_svm(svm, X_test, y_test)
         # print(report_cm_results(cm))
 
-        print(cm)
+        svc = train_svm_with_k_fold_cv(
+            X_train_val, y_train_val, is_verbose=True
+        )
+        cm = test_svm(svc, X_test, y_test)
+        print(report_cm_results(cm))
