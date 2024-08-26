@@ -186,7 +186,7 @@ if __name__ == '__main__':
             X_train_val, y_train_val, is_verbose=True
         )
         cm = test_random_forest(rf, X_test, y_test)
-        print(report_cm_results(cm))
+        print(cm)
 
         # rf = train_random_forest(
         #     X_train_val, y_train_val,
