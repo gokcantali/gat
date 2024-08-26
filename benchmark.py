@@ -59,8 +59,8 @@ def test_svm(clf, test_data, test_label):
 
 def train_random_forest_with_k_fold_cv(X_train_val, y_train_val, is_verbose=True):
     parameters = {
-        "max_depth": [3, 4, 5, 6, 7, 8, 9, 10],
-        "n_estimators": [20, 50, 75, 100, 150, 250, 400],
+        "max_depth": [3, 4, 5, 6],
+        "n_estimators": [50, 100, 150],
     }
     n_splits = int((1 - TEST_RATIO) / VALIDATION_RATIO)
 
