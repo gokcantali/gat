@@ -8,7 +8,7 @@ from sklearn.metrics import (
     confusion_matrix,
     f1_score,
     precision_score,
-    recall_score
+    recall_score, balanced_accuracy_score
 )
 from torch_geometric.nn import GCNConv
 
@@ -97,9 +97,16 @@ class GCN(torch.nn.Module):
     def train_epoch_batch_mode(self, data_loader):
         self.train()
 
+        num_of_batches = len(data_loader)
+        total_loss = 0.0
+        total_accuracy = 0.0
+        total_precision = 0.0
+        total_recall = 0.0
+        total_f1 = 0.0
+
         losses = []
         predictions = []
-        ground_truths = []
+        labels = []
         start_time = time.time()
         for data in data_loader:
             self.optimizer.zero_grad()
@@ -112,22 +119,22 @@ class GCN(torch.nn.Module):
 
             _, preds = out.max(dim=1)
             predictions += preds.cpu()
-            ground_truths += data.y.cpu()
+            labels += data.y.cpu()
+
+            total_accuracy += balanced_accuracy_score(data.y.cpu(), preds.cpu())
+            total_precision += precision_score(data.y.cpu(), preds.cpu(), average="weighted", zero_division=1)
+            total_recall += recall_score(data.y.cpu(), preds.cpu(), average="weighted", zero_division=1)
+            total_f1 += f1_score(data.y.cpu(), preds.cpu(), average="weighted", zero_division=1)
 
         end_time = time.time()
         print(f"training time: {(end_time-start_time)}")
 
-        start_time = time.time()
-        metrics = calculate_metrics(ground_truths, predictions)
-        end_time=time.time()
-        print(f"metric calculation time: {(end_time - start_time)}")
-
         return (
-            mean(losses),
-            metrics["accuracy"],
-            metrics["precision"],
-            metrics["recall"],
-            metrics["f1_score"],
+            total_loss / num_of_batches,
+            total_accuracy / num_of_batches,
+            total_precision / num_of_batches,
+            total_recall / num_of_batches,
+            total_f1 / num_of_batches
         )
 
     def validate_epoch(self, data):
@@ -169,15 +176,15 @@ class GCN(torch.nn.Module):
                 val_correct = val_preds.eq(labels).sum().item()
 
                 total_accuracy += val_correct / labels.size(0)
-                total_precision += precision_score(labels.cpu(), val_preds.cpu(), average="binary", zero_division=1)
-                total_recall += recall_score(labels.cpu(), val_preds.cpu(), average="binary", zero_division=1)
-                total_f1 += f1_score(labels.cpu(), val_preds.cpu(), average="binary", zero_division=1)
+                total_precision += precision_score(labels.cpu(), val_preds.cpu(), average="weighted", zero_division=1)
+                total_recall += recall_score(labels.cpu(), val_preds.cpu(), average="weighted", zero_division=1)
+                total_f1 += f1_score(labels.cpu(), val_preds.cpu(), average="weighted", zero_division=1)
                 data_y += labels.cpu()
                 pred_y += val_preds.cpu()
 
         cm = confusion_matrix(data_y, pred_y)
-        tn, fp, fn, tp = cm.ravel()
-        print(f"tp: {tp} - tn: {tn}, fp: {fp}, fn: {fn}")
+        #tn, fp, fn, tp = cm.ravel()
+        #print(f"tp: {tp} - tn: {tn}, fp: {fp}, fn: {fn}")
         end_time = time.time()
         print(f"validation time: {(end_time-start_time)}")
 

@@ -182,9 +182,11 @@ if __name__ == '__main__':
             X, y, test_size=TEST_RATIO,
             stratify=y, #random_state=RANDOM_STATE
         )
-        # rf = train_random_forest_with_k_fold_cv(
-        #     X_train_val, y_train_val, is_verbose=True
-        # )
+        rf = train_random_forest_with_k_fold_cv(
+            X_train_val, y_train_val, is_verbose=True
+        )
+        cm = test_random_forest(rf, X_test, y_test)
+        print(report_cm_results(cm))
 
         # rf = train_random_forest(
         #     X_train_val, y_train_val,
@@ -197,8 +199,8 @@ if __name__ == '__main__':
         # cm = test_svm(svm, X_test, y_test)
         # print(report_cm_results(cm))
 
-        svc = train_svm_with_k_fold_cv(
-            X_train_val, y_train_val, is_verbose=True
-        )
-        cm = test_svm(svc, X_test, y_test)
-        print(report_cm_results(cm))
+        # svc = train_svm_with_k_fold_cv(
+        #     X_train_val, y_train_val, is_verbose=True
+        # )
+        # cm = test_svm(svc, X_test, y_test)
+        # print(report_cm_results(cm))

@@ -54,7 +54,7 @@ def preprocess_df(use_diversity_index=True):
     return df
 
 def preprocess_X(df, use_diversity_index=True):
-    X = df.drop(columns=["is_anomaly"])
+    X = df.drop(columns=["is_anomaly", "anomaly_class"])
     #X["timestamp"] = pd.to_datetime(X["timestamp"], utc=True)
     #X.sort_values(by=["ip_source", "timestamp"], inplace=True)
 
@@ -93,4 +93,4 @@ def preprocess_X(df, use_diversity_index=True):
 
 
 def preprocess_y(df):
-    return df["is_anomaly"]
+    return df["anomaly_class"]

@@ -13,6 +13,7 @@ from gat.model import GAT
 from gat.gcn import GCN
 from gat.preprocesser import preprocess_df, preprocess_X, preprocess_y, construct_port_scan_label
 
+RANDOM_STATE = 42
 TEST_SIZE = 0.10
 VALIDATION_SIZE = 0.10
 TRAIN_SIZE = 1 - VALIDATION_SIZE - TEST_SIZE
@@ -173,7 +174,7 @@ def run(config=None, mode='train'):
     # )
     # save_graph_data(graph, 'traces-3ddos-2zap-1scan.75percent.pt')
 
-    graph_data = load_graph_data('sampled-traces-3ddos-2zap-1scan.pt')
+    graph_data = load_graph_data('multi-class-traces-3ddos-2zap-1scan.pt')
     graph_data.x[:, 18] = torch.zeros_like(graph_data.x[:, 18])
     graph_data.x[:, 19] = torch.zeros_like(graph_data.x[:, 19])
     num_parts = 1000
@@ -190,7 +191,7 @@ def run(config=None, mode='train'):
         else:
             train_data.append(batch)
 
-    gcn_model = initialize_gcn_model(2, 25)
+    gcn_model = initialize_gcn_model(4, 25)
     training_metrics = gcn_model.train_model(train_data, validation_data, batch_mode=True)
     print("=======TRAINING COMPLETED!=======\n")
     if mode == 'train':
