@@ -61,8 +61,7 @@ class GCN(torch.nn.Module):
             self.optimizer, mode="min", factor=0.1, patience=self.patience, verbose=True
         )
 
-    def forward(self, data):
-        x, edge_index = data.x, data.edge_index
+    def forward(self, x, edge_index):
         #x = self.dropout(x)
 
         x = F.relu(self.conv1(x, edge_index))
@@ -79,7 +78,7 @@ class GCN(torch.nn.Module):
     def train_epoch(self, data):
         self.train()
         self.optimizer.zero_grad()
-        out = self(data)
+        out = self(data.x, data.edge_index)
         loss = F.nll_loss(out, data.y)
         loss.backward()
         self.optimizer.step()
@@ -110,7 +109,7 @@ class GCN(torch.nn.Module):
         start_time = time.time()
         for data in data_loader:
             self.optimizer.zero_grad()
-            out = self(data)
+            out = self(data.x, data.edge_index)
             loss = F.nll_loss(out, data.y)
             losses.append(loss.detach().item())
 
@@ -140,7 +139,7 @@ class GCN(torch.nn.Module):
     def validate_epoch(self, data):
         self.eval()
         with torch.no_grad():
-            val_out = self(data)
+            val_out = self(data.x, data.edge_index)
             val_loss = F.nll_loss(val_out, data.y).item()
             _, val_preds = val_out.max(dim=1)
             val_correct = val_preds.eq(data.y).sum().item()
@@ -167,7 +166,7 @@ class GCN(torch.nn.Module):
         start_time = time.time()
         for data in data_loader:
             with torch.no_grad():
-                val_out = self(data)
+                val_out = self(data.x, data.edge_index)
                 labels = data.y
 
                 total_loss += F.nll_loss(val_out, labels).item()
@@ -260,14 +259,14 @@ class GCN(torch.nn.Module):
 
     def test_model(self, data):
         self.eval()
-        out = self(data)
+        out = self(data.x, data.edge_index)
         _, pred = out.max(dim=1)
         return pred
 
     def test_model_batch_mode(self, data):
         predictions = []
         for batch in data:
-            out = self(batch)
+            out = self(batch.x, batch.edge_index)
             _, pred = out.max(dim=1)
             predictions += pred
 

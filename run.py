@@ -1,4 +1,5 @@
 import os
+import time
 
 import numpy as np
 import torch
@@ -179,6 +180,7 @@ def run(config=None, mode='train'):
     graph_data.x[:, 19] = torch.zeros_like(graph_data.x[:, 19])
     num_parts = 1000
 
+    start_time = time.time()
     batches = RandomNodeLoader(graph_data, num_parts=num_parts, shuffle=True)
     train_data, validation_data, test_data = [], [], []
     y_true = []
@@ -190,14 +192,22 @@ def run(config=None, mode='train'):
             validation_data.append(batch)
         else:
             train_data.append(batch)
+    end_time = time.time()
+    print(f"Time for batching data: {end_time - start_time}")
 
+    start_time = time.time()
     gcn_model = initialize_gcn_model(4, 25)
     training_metrics = gcn_model.train_model(train_data, validation_data, batch_mode=True)
+    end_time = time.time()
+    print(f"Total Training Time: {end_time - start_time}")
     print("=======TRAINING COMPLETED!=======\n")
     if mode == 'train':
         return training_metrics
 
+    start_time = time.time()
     y_pred = gcn_model.test_model_batch_mode(test_data)
+    end_time = time.time()
+    print(f"Total Testing Time: {end_time - start_time}")
     print("=====TEST RESULTS=======")
     print(confusion_matrix(y_true, y_pred))
     return confusion_matrix(y_true, y_pred)
