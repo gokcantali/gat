@@ -11,7 +11,7 @@ from sklearn.metrics import (
     confusion_matrix,
     f1_score,
     precision_score,
-    recall_score, balanced_accuracy_score
+    recall_score, balanced_accuracy_score, accuracy_score
 )
 from torch_geometric.nn import GCNConv
 
@@ -268,12 +268,19 @@ class GCN(torch.nn.Module):
 
     def test_model_batch_mode(self, data):
         predictions = []
+        losses = []
+        labels = []
         for batch in data:
+            labels += batch.y
+
             out = self(batch.x, batch.edge_index)
+            loss = F.nll_loss(out, batch.y).item()
+            losses.append(loss)
             _, pred = out.max(dim=1)
             predictions += pred
 
-        return predictions
+        accuracy = accuracy_score(predictions, labels)
+        return predictions, mean(losses), accuracy
 
     def set_parameters(self, parameters: List[np.ndarray]):
         params_dict = zip(self.state_dict().keys(), parameters)

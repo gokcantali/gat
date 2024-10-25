@@ -205,7 +205,7 @@ def run(config=None, mode='train'):
         return training_metrics
 
     start_time = time.time()
-    y_pred = gcn_model.test_model_batch_mode(test_data)
+    y_pred, _, _ = gcn_model.test_model_batch_mode(test_data)
     end_time = time.time()
     print(f"Total Testing Time: {end_time - start_time}")
     print("=====TEST RESULTS=======")

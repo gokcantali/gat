@@ -28,11 +28,8 @@ class FlowerClient(NumPyClient):
 
     def evaluate(self, parameters, config):
         self.net.set_parameters(parameters)
-        #preds = self.net.test_model_batch_mode(self.testloader)
-        #accuracy = accuracy_score(preds, [test.y for test in self.testloader])
-        #return float(1-accuracy), len(self.testloader), {"accuracy": float(accuracy)}
-        # Calculate accuracy and loss
-        return 0, len(self.testloader), {"accuracy": 0.0}
+        _, loss, accuracy = self.net.test_model_batch_mode(self.testloader)
+        return loss, len(self.testloader), {"accuracy": float(accuracy)}
 
 
 def client_fn(context: Context) -> Client:
