@@ -1,5 +1,8 @@
 import time
+from collections import OrderedDict
+from typing import List
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -93,7 +96,7 @@ class GCN(torch.nn.Module):
 
         return loss.item(), accuracy, precision, recall, f1
 
-    def train_epoch_batch_mode(self, data_loader):
+    def train_epoch_batch_mode(self, data_loader, epochs=1):
         self.train()
 
         num_of_batches = len(data_loader)
@@ -196,12 +199,12 @@ class GCN(torch.nn.Module):
             cm
         )
 
-    def train_model(self, train_data, val_data, batch_mode=False):
+    def train_model(self, train_data, val_data, batch_mode=False, epochs=0):
         metrics = Metrics()
         best_val_loss = float("inf")
         patience_counter = 0
 
-        for epoch in range(self.epochs):
+        for epoch in range(epochs or self.epochs):
             start_time = time.time()
             if batch_mode:
                 train_loss, train_accuracy, train_precision, train_recall, train_f1 = (
@@ -234,9 +237,9 @@ class GCN(torch.nn.Module):
             metrics.epoch_values.append(epoch + 1)
 
             epoch_time = time.time() - start_time
-            print_epoch_stats(
-                epoch + 1, epoch_time, train_loss, train_accuracy, val_loss, val_accuracy,
-                train_precision, train_recall, train_f1, val_precision, val_recall, val_f1, cm)
+            #print_epoch_stats(
+            #    epoch + 1, epoch_time, train_loss, train_accuracy, val_loss, val_accuracy,
+            #    train_precision, train_recall, train_f1, val_precision, val_recall, val_f1, cm)
 
             # Adjust learning rate based on validation loss
             self.scheduler.step(val_loss)
@@ -254,7 +257,7 @@ class GCN(torch.nn.Module):
                     break
 
         self.load_state_dict(torch.load("best_model.pth"))
-        plot_metrics(metrics)
+        #plot_metrics(metrics)
         return metrics
 
     def test_model(self, data):
@@ -271,3 +274,11 @@ class GCN(torch.nn.Module):
             predictions += pred
 
         return predictions
+
+    def set_parameters(self, parameters: List[np.ndarray]):
+        params_dict = zip(self.state_dict().keys(), parameters)
+        state_dict = OrderedDict({k: torch.Tensor(v) for k, v in params_dict})
+        self.load_state_dict(state_dict, strict=True)
+
+    def get_parameters(self) -> List[np.ndarray]:
+        return [val.cpu().numpy() for _, val in self.state_dict().items()]
