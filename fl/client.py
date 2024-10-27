@@ -1,7 +1,8 @@
 from pathlib import Path
 
+import os
 import torch
-from flwr.client import NumPyClient, Client, ClientApp
+from flwr.client import NumPyClient, Client, ClientApp, start_client
 from flwr.common import Context
 from sklearn.metrics import accuracy_score
 from torch import load
@@ -32,17 +33,13 @@ class FlowerClient(NumPyClient):
         return loss, len(self.testloader), {"accuracy": float(accuracy)}
 
 
-def client_fn(context: Context) -> Client:
-    """Create a Flower client representing a single organization."""
-
+def construct_flower_client(client_id):
     # Load model
     net = initialize_gcn_model(num_classes=4)
 
-    # Load data (CIFAR-10)
     # Note: each client gets a different trainloader/valloader, so each client
     # will train and evaluate on their own unique data partition
     # Read the node_config to fetch data partition associated to this node
-    partition_id = context.node_config["partition-id"]
 
     graph_data = load(Path('../data/graph/multi-class-traces-3ddos-2zap-1scan.pt'))
     graph_data.x[:, 18] = torch.zeros_like(graph_data.x[:, 18])
@@ -50,7 +47,7 @@ def client_fn(context: Context) -> Client:
     num_parts = 1000
 
     batches = RandomNodeLoader(graph_data, num_parts=num_parts, shuffle=True)
-    local_part_start, local_part_end = num_parts * partition_id // 5, num_parts * (partition_id + 1) // 5
+    local_part_start, local_part_end = num_parts * client_id // 5, num_parts * (client_id + 1) // 5
     train_loader, validation_loader, test_loader = [], [], []
     y_true = []
     for ind, batch in enumerate(batches):
@@ -71,5 +68,28 @@ def client_fn(context: Context) -> Client:
     return FlowerClient(net, train_loader, validation_loader, test_loader).to_client()
 
 
+def client_fn(context: Context) -> Client:
+    """Create a Flower client representing a single organization."""
+
+    partition_id = context.node_config["partition-id"]
+
+    # Construct the client
+    flower_client = construct_flower_client(
+        client_id=partition_id
+    )
+    return flower_client
+
+
 # Create the ClientApp
 client = ClientApp(client_fn=client_fn)
+
+
+if __name__ == '__main__':
+    client_id = int(os.getenv("CLIENT_ID", "-1"))
+    server_address = os.getenv("SERVER_ADDRESS", "0.0.0.0:8080")
+    start_client(
+        server_address=server_address,
+        client=construct_flower_client(
+            client_id=client_id
+        )
+    )

@@ -1,8 +1,9 @@
 # Create FedAvg strategy
+import os
 from typing import List, Tuple
 
 from flwr.common import Context, Metrics
-from flwr.server import ServerAppComponents, ServerConfig, ServerApp
+from flwr.server import ServerAppComponents, ServerConfig, ServerApp, start_server
 from flwr.server.strategy import FedAvg
 
 
@@ -24,6 +25,11 @@ strategy = FedAvg(
     evaluate_metrics_aggregation_fn=weighted_average,  # Use weighted average as custom metric evaluation function
 )
 
+
+# Configure the server for 5 rounds of training
+config = ServerConfig(num_rounds=5)
+
+
 def server_fn(context: Context) -> ServerAppComponents:
     """Construct components that set the ServerApp behaviour.
 
@@ -31,9 +37,6 @@ def server_fn(context: Context) -> ServerAppComponents:
     construction of all elements (e.g the strategy or the number of rounds)
     wrapped in the returned ServerAppComponents object.
     """
-
-    # Configure the server for 5 rounds of training
-    config = ServerConfig(num_rounds=5)
 
     return ServerAppComponents(strategy=strategy, config=config)
 
@@ -44,3 +47,12 @@ server = ServerApp(server_fn=server_fn)
 # Specify the resources each of your clients need
 # By default, each client will be allocated 1x CPU and 0x GPUs
 backend_config = {"client_resources": {"num_cpus": 2, "num_gpus": 0.0}}
+
+
+if __name__ == "__main__":
+    server_address = os.getenv("SERVER_ADDRESS", "0.0.0.0:8080")
+    start_server(
+        server_address=server_address,  # Set this to the server's IP
+        config=config,
+        strategy=strategy,
+    )
