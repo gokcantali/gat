@@ -1,5 +1,6 @@
 # Create FedAvg strategy
 import os
+from dotenv import load_dotenv
 from typing import List, Tuple
 
 from flwr.common import Context, Metrics
@@ -50,6 +51,8 @@ backend_config = {"client_resources": {"num_cpus": 2, "num_gpus": 0.0}}
 
 
 if __name__ == "__main__":
+    load_dotenv()
+
     server_address = os.getenv("SERVER_ADDRESS", "0.0.0.0:8080")
     start_server(
         server_address=server_address,  # Set this to the server's IP

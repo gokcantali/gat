@@ -2,6 +2,7 @@ from pathlib import Path
 
 import os
 import torch
+from dotenv import load_dotenv
 from flwr.client import NumPyClient, Client, ClientApp, start_client
 from flwr.common import Context
 from sklearn.metrics import accuracy_score
@@ -85,6 +86,8 @@ client = ClientApp(client_fn=client_fn)
 
 
 if __name__ == '__main__':
+    load_dotenv()
+
     client_id = int(os.getenv("CLIENT_ID", "-1"))
     server_address = os.getenv("SERVER_ADDRESS", "0.0.0.0:8080")
     start_client(
