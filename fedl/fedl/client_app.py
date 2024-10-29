@@ -4,7 +4,10 @@ import os
 import torch
 from dotenv import load_dotenv
 from flwr.client import NumPyClient, Client, ClientApp, start_client
+from flwr.client.app import start_client_internal
 from flwr.common import Context
+from flwr.client.mod.localdp_mod import LocalDpMod
+from flwr.common.typing import UserConfig
 from sklearn.metrics import accuracy_score
 from torch import load
 from torch_geometric.loader import RandomNodeLoader
@@ -14,7 +17,8 @@ from run import initialize_gcn_model
 
 
 class FlowerClient(NumPyClient):
-    def __init__(self, net, trainloader, valloader, testloader):
+    def __init__(self, net, trainloader, valloader, testloader, **kwargs):
+        super().__init__(**kwargs)
         self.net = net
         self.trainloader = trainloader
         self.valloader = valloader
@@ -34,7 +38,7 @@ class FlowerClient(NumPyClient):
         return loss, len(self.testloader), {"accuracy": float(accuracy)}
 
 
-def construct_flower_client(client_id):
+def construct_flower_client(client_id, context):
     # Load model
     net = initialize_gcn_model(num_classes=4)
 
@@ -42,7 +46,8 @@ def construct_flower_client(client_id):
     # will train and evaluate on their own unique data partition
     # Read the node_config to fetch data partition associated to this node
 
-    graph_data = load(Path('../data/graph/multi-class-traces-3ddos-2zap-1scan.pt'))
+    root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+    graph_data = load(Path(f'{root}/data/graph/multi-class-traces-3ddos-2zap-1scan.pt'))
     graph_data.x[:, 18] = torch.zeros_like(graph_data.x[:, 18])
     graph_data.x[:, 19] = torch.zeros_like(graph_data.x[:, 19])
     num_parts = 1000
@@ -66,7 +71,9 @@ def construct_flower_client(client_id):
     # Create a single Flower client representing a single organization
     # FlowerClient is a subclass of NumPyClient, so we need to call .to_client()
     # to convert it to a subclass of `flwr.client.Client`
-    return FlowerClient(net, train_loader, validation_loader, test_loader).to_client()
+    return FlowerClient(
+        net, train_loader, validation_loader, test_loader,
+    ).to_client()
 
 
 def client_fn(context: Context) -> Client:
@@ -76,23 +83,39 @@ def client_fn(context: Context) -> Client:
 
     # Construct the client
     flower_client = construct_flower_client(
-        client_id=partition_id
+        client_id=partition_id, context=context
     )
     return flower_client
 
 
+# Create an instance of the mod with the required params
+local_dp_obj = LocalDpMod(
+    0.9, 0.8, 0.01, 0.02
+)
+
 # Create the ClientApp
-client = ClientApp(client_fn=client_fn)
+app = ClientApp(
+    client_fn=client_fn,
+    mods=[local_dp_obj],
+)
 
 
 if __name__ == '__main__':
-    load_dotenv()
-
-    client_id = int(os.getenv("CLIENT_ID", "-1"))
-    server_address = os.getenv("SERVER_ADDRESS", "0.0.0.0:8080")
-    start_client(
-        server_address=server_address,
-        client=construct_flower_client(
-            client_id=client_id
-        )
-    )
+    construct_flower_client(5, None)
+#     load_dotenv()
+#
+#     client_id = int(os.getenv("CLIENT_ID", "-1"))
+#     server_address = os.getenv("SERVER_ADDRESS", "0.0.0.0:8080")
+#     # start_client(
+#     #     server_address=server_address,
+#     #     client=construct_flower_client(
+#     #         client_id=client_id
+#     #     )
+#     # )
+#     start_client_internal(
+#         server_address=server_address,
+#         node_config=UserConfig({
+#             "partition-id": client_id,
+#         }),
+#         client_fn=client_fn
+#     )

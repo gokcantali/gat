@@ -43,19 +43,19 @@ def server_fn(context: Context) -> ServerAppComponents:
 
 
 # Create the ServerApp
-server = ServerApp(server_fn=server_fn)
+app = ServerApp(server_fn=server_fn)
 
 # Specify the resources each of your clients need
 # By default, each client will be allocated 1x CPU and 0x GPUs
-backend_config = {"client_resources": {"num_cpus": 2, "num_gpus": 0.0}}
+# backend_config = {"client_resources": {"num_cpus": 2, "num_gpus": 0.0}}
 
 
-if __name__ == "__main__":
-    load_dotenv()
-
-    server_address = os.getenv("SERVER_ADDRESS", "0.0.0.0:8080")
-    start_server(
-        server_address=server_address,  # Set this to the server's IP
-        config=config,
-        strategy=strategy,
-    )
+# if __name__ == "__main__":
+#     load_dotenv()
+#
+#     server_address = os.getenv("SERVER_ADDRESS", "0.0.0.0:8080")
+#     start_server(
+#         server_address=server_address,  # Set this to the server's IP
+#         config=config,
+#         strategy=strategy,
+#     )
