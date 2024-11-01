@@ -2,17 +2,13 @@ from pathlib import Path
 
 import os
 import torch
-from dotenv import load_dotenv
-from flwr.client import NumPyClient, Client, ClientApp, start_client
-from flwr.client.app import start_client_internal
+from flwr.client import NumPyClient, Client, ClientApp
+from flwr.client.mod import secaggplus_mod
 from flwr.common import Context
 from flwr.client.mod.localdp_mod import LocalDpMod
-from flwr.common.typing import UserConfig
-from sklearn.metrics import accuracy_score
 from torch import load
 from torch_geometric.loader import RandomNodeLoader
 
-from gat.load_data import load_graph_data
 from run import initialize_gcn_model
 
 
@@ -90,32 +86,14 @@ def client_fn(context: Context) -> Client:
 
 # Create an instance of the mod with the required params
 local_dp_obj = LocalDpMod(
-    0.9, 0.8, 0.01, 0.02
+    0.8, 0.2, 0.0001, 0.0001
 )
 
 # Create the ClientApp
 app = ClientApp(
     client_fn=client_fn,
-    mods=[local_dp_obj],
+    mods=[
+        secaggplus_mod,  # Comment-out to disable SecAgg+
+        local_dp_obj  # Comment-out to disable DP
+    ],
 )
-
-
-if __name__ == '__main__':
-    construct_flower_client(5, None)
-#     load_dotenv()
-#
-#     client_id = int(os.getenv("CLIENT_ID", "-1"))
-#     server_address = os.getenv("SERVER_ADDRESS", "0.0.0.0:8080")
-#     # start_client(
-#     #     server_address=server_address,
-#     #     client=construct_flower_client(
-#     #         client_id=client_id
-#     #     )
-#     # )
-#     start_client_internal(
-#         server_address=server_address,
-#         node_config=UserConfig({
-#             "partition-id": client_id,
-#         }),
-#         client_fn=client_fn
-#     )

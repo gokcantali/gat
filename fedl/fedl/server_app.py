@@ -1,11 +1,10 @@
 # Create FedAvg strategy
-import os
-from dotenv import load_dotenv
 from typing import List, Tuple
 
 from flwr.common import Context, Metrics
-from flwr.server import ServerAppComponents, ServerConfig, ServerApp, start_server
+from flwr.server import ServerAppComponents, ServerConfig, ServerApp, start_server, Driver, LegacyContext
 from flwr.server.strategy import FedAvg
+from flwr.server.workflow import SecAggPlusWorkflow, DefaultWorkflow
 
 
 def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
@@ -26,7 +25,6 @@ strategy = FedAvg(
     evaluate_metrics_aggregation_fn=weighted_average,  # Use weighted average as custom metric evaluation function
 )
 
-
 # Configure the server for 5 rounds of training
 config = ServerConfig(num_rounds=5)
 
@@ -45,17 +43,27 @@ def server_fn(context: Context) -> ServerAppComponents:
 # Create the ServerApp
 app = ServerApp(server_fn=server_fn)
 
-# Specify the resources each of your clients need
-# By default, each client will be allocated 1x CPU and 0x GPUs
-# backend_config = {"client_resources": {"num_cpus": 2, "num_gpus": 0.0}}
 
+### Comment-out the following code block ###
+### to disable SecAgg+ Secure Aggregation ###
+@app.main()
+def main(driver: Driver, context: Context) -> None:
+    # Construct the LegacyContext
+    num_rounds = context.run_config["num-server-rounds"]
+    context = LegacyContext(
+        context=context,
+        config=ServerConfig(num_rounds=num_rounds),
+        strategy=strategy,
+    )
 
-# if __name__ == "__main__":
-#     load_dotenv()
-#
-#     server_address = os.getenv("SERVER_ADDRESS", "0.0.0.0:8080")
-#     start_server(
-#         server_address=server_address,  # Set this to the server's IP
-#         config=config,
-#         strategy=strategy,
-#     )
+    fit_workflow = SecAggPlusWorkflow(
+        num_shares=context.run_config["num-shares"],
+        reconstruction_threshold=context.run_config["reconstruction-threshold"],
+        max_weight=context.run_config["max-weight"],
+    )
+
+    # Create the workflow
+    workflow = DefaultWorkflow(fit_workflow=fit_workflow)
+
+    # Execute
+    workflow(driver, context)

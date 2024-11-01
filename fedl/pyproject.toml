@@ -25,9 +25,13 @@ serverapp = "fedl.server_app:app"
 clientapp = "fedl.client_app:app"
 
 [tool.flwr.app.config]
-num-server-rounds = 3
+num-server-rounds = 5
 fraction-fit = 0.5
-local-epochs = 1
+# Parameters for the SecAgg+ protocol
+num-shares = 3
+reconstruction-threshold = 2
+max-weight = 9000
+timeout = 15.0
 
 [tool.flwr.federations]
 default = "local-simulation"
