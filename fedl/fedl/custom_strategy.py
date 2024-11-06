@@ -2,6 +2,7 @@ import random
 from logging import INFO, WARNING
 from typing import Optional
 
+import numpy as np
 from flwr.common import FitIns, Parameters, log, GetPropertiesIns
 from flwr.server import SimpleClientManager
 from flwr.server.client_proxy import ClientProxy
@@ -38,14 +39,27 @@ class SimpleClientManagerWithCustomSampling(SimpleClientManager):
             )
             return []
 
-        sampled_cids = random.sample(available_cids, num_clients)
-        log(WARNING, "Here are the clients:::")
-        for cid in self.clients:
-            log(WARNING, self.clients[cid])
-            log(WARNING, self.clients[cid].properties)
-            # log(WARNING, self.clients[cid].get_properties(
-            #     ins=GetPropertiesIns(config={}), timeout=None, group_id=None
-            # ))
+        # apply green energy prioritization logic
+        # assume that clients have a property called "green_energy" which is a boolean
+        # for now, we will assign this property randomly
+        weights = []
+        log(WARNING, "Clients with green energy:")
+        for cid in available_cids:
+            green_energy = random.choice([0, 0, 1])
+            if green_energy:
+                log(WARNING, cid)
+                weights.append(10)
+            else:
+                weights.append(1)
+
+        sampled_cids = np.random.choice(
+            available_cids, size=num_clients,
+            replace=False, p=weights/np.sum(weights)
+        )
+
+        log(WARNING, "Here are the selected clients:")
+        for cid in sampled_cids:
+            log(WARNING, cid)
         return [self.clients[cid] for cid in sampled_cids]
 
 

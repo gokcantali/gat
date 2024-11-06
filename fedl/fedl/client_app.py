@@ -4,7 +4,7 @@ import os
 import torch
 from flwr.client import NumPyClient, Client, ClientApp
 from flwr.client.mod import secaggplus_mod
-from flwr.common import Context
+from flwr.common import Context, Config, Scalar
 from flwr.client.mod.localdp_mod import LocalDpMod
 from torch import load
 from torch_geometric.loader import RandomNodeLoader
@@ -19,6 +19,10 @@ class FlowerClient(NumPyClient):
         self.trainloader = trainloader
         self.valloader = valloader
         self.testloader = testloader
+
+    def get_properties(self, config: Config) -> dict[str, Scalar]:
+        print("Node config: ", self.context.node_config)
+        return self.get_context().node_config
 
     def get_parameters(self, config):
         return self.net.get_parameters()
@@ -67,9 +71,11 @@ def construct_flower_client(client_id, context):
     # Create a single Flower client representing a single organization
     # FlowerClient is a subclass of NumPyClient, so we need to call .to_client()
     # to convert it to a subclass of `flwr.client.Client`
-    return FlowerClient(
+    flower_client = FlowerClient(
         net, train_loader, validation_loader, test_loader,
-    ).to_client()
+    )
+    flower_client.set_context(context)
+    return flower_client.to_client()
 
 
 def client_fn(context: Context) -> Client:
