@@ -61,7 +61,7 @@ class GCN(torch.nn.Module):
         self.dropout = nn.Dropout(p=dropout)
         self.optimizer = optimizer(self.parameters(), lr=lr, weight_decay=weight_decay)
         self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            self.optimizer, mode="min", factor=0.1, patience=self.patience, verbose=True
+            self.optimizer, mode="min", factor=0.1, patience=self.patience
         )
 
     def forward(self, x, edge_index):
@@ -243,7 +243,7 @@ class GCN(torch.nn.Module):
 
             # Adjust learning rate based on validation loss
             self.scheduler.step(val_loss)
-            print(f'Epoch {epoch + 1}, Current Learning Rate: {self.scheduler.optimizer.param_groups[0]["lr"]}')
+            print(f'Epoch {epoch + 1}, Current Learning Rate: {self.scheduler.get_last_lr()}')
 
             # Early stopping check to prevent overfitting
             if val_loss < best_val_loss:
@@ -279,8 +279,13 @@ class GCN(torch.nn.Module):
             _, pred = out.max(dim=1)
             predictions += pred
 
-        accuracy = accuracy_score(predictions, labels)
-        return predictions, mean(losses), accuracy
+        perf_metrics = {
+            "accuracy": accuracy_score(predictions, labels),
+            "precision": precision_score(labels, predictions, average="weighted", zero_division=1),
+            "recall": recall_score(labels, predictions, average="weighted", zero_division=1),
+            "f1_score": f1_score(labels, predictions, average="weighted", zero_division=1),
+        }
+        return predictions, mean(losses), perf_metrics
 
     def set_parameters(self, parameters: List[np.ndarray]):
         params_dict = zip(self.state_dict().keys(), parameters)

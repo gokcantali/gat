@@ -10,25 +10,37 @@ from .custom_strategy import SimpleClientManagerWithCustomSampling
 
 
 def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
-    # Multiply accuracy of each client by number of examples used
-    accuracies = [num_examples * m["accuracy"] for num_examples, m in metrics]
-    examples = [num_examples for num_examples, _ in metrics]
+    aggregated_metrics = {}
+    total_examples = 0
 
-    # Aggregate and return custom metric (weighted average)
-    return {"accuracy": sum(accuracies) / sum(examples)}
+    for num_examples, m in metrics:
+        total_examples += num_examples
+        for key, value in m.items():
+            if key not in aggregated_metrics:
+                aggregated_metrics[key] = 0
+
+            # multiply metric of each client by number of examples used
+            aggregated_metrics[key] += num_examples * value
+
+    # divide by total number of examples to get weighted average
+    for metric in aggregated_metrics:
+        aggregated_metrics[metric] /= total_examples
+
+    # return aggregated metrics in the weighted average form
+    return aggregated_metrics
 
 
 strategy = FedAvg(
-    fraction_fit=0.6,  # Sample 100% of available clients for training
-    fraction_evaluate=0.5,  # Sample 50% of available clients for evaluation
+    fraction_fit=0.6,  # Sample 60% of available clients for training
+    fraction_evaluate=1,  # Sample 100% of available clients for evaluation
     min_fit_clients=3,  # Never sample less than 3 clients for training
-    min_evaluate_clients=2,  # Never sample less than 2 clients for evaluation
+    min_evaluate_clients=3,  # Never sample less than 3 clients for evaluation
     min_available_clients=3,  # Wait until all 3 clients are available
     evaluate_metrics_aggregation_fn=weighted_average,  # Use weighted average as custom metric evaluation function
 )
 
 # Configure the server for 5 rounds of training
-config = ServerConfig(num_rounds=5)
+config = ServerConfig(num_rounds=20)
 
 
 def server_fn(context: Context) -> ServerAppComponents:
@@ -41,7 +53,7 @@ def server_fn(context: Context) -> ServerAppComponents:
 
     return ServerAppComponents(
         strategy=strategy, config=config,
-        client_manager=SimpleClientManagerWithCustomSampling()
+        # client_manager=SimpleClientManagerWithCustomSampling()
     )
 
 
@@ -51,25 +63,25 @@ app = ServerApp(server_fn=server_fn)
 
 ### Comment-out the following code block ###
 ### to disable SecAgg+ Secure Aggregation ###
-@app.main()
-def main(driver: Driver, context: Context) -> None:
-    # Construct the LegacyContext
-    num_rounds = context.run_config["num-server-rounds"]
-    context = LegacyContext(
-        context=context,
-        config=ServerConfig(num_rounds=num_rounds),
-        strategy=strategy,
-        client_manager=SimpleClientManagerWithCustomSampling(),
-    )
-
-    fit_workflow = SecAggPlusWorkflow(
-        num_shares=context.run_config["num-shares"],
-        reconstruction_threshold=context.run_config["reconstruction-threshold"],
-        max_weight=context.run_config["max-weight"],
-    )
-
-    # Create the workflow
-    workflow = DefaultWorkflow(fit_workflow=fit_workflow)
-
-    # Execute
-    workflow(driver, context)
+# @app.main()
+# def main(driver: Driver, context: Context) -> None:
+#     # Construct the LegacyContext
+#     num_rounds = context.run_config["num-server-rounds"]
+#     context = LegacyContext(
+#         context=context,
+#         config=ServerConfig(num_rounds=num_rounds),
+#         strategy=strategy,
+#         client_manager=SimpleClientManagerWithCustomSampling(),
+#     )
+#
+#     fit_workflow = SecAggPlusWorkflow(
+#         num_shares=context.run_config["num-shares"],
+#         reconstruction_threshold=context.run_config["reconstruction-threshold"],
+#         max_weight=context.run_config["max-weight"],
+#     )
+#
+#     # Create the workflow
+#     workflow = DefaultWorkflow(fit_workflow=fit_workflow)
+#
+#     # Execute
+#     workflow(driver, context)
