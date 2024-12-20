@@ -3,7 +3,7 @@ from typing import List, Tuple
 
 from flwr.common import Context, Metrics, Parameters
 from flwr.server import ServerAppComponents, ServerConfig, ServerApp, start_server, Driver, LegacyContext, ClientManager
-from flwr.server.strategy import FedAvg
+from flwr.server.strategy import FedAvg, FedProx
 from flwr.server.workflow import SecAggPlusWorkflow, DefaultWorkflow
 
 from .custom_strategy import SimpleClientManagerWithCustomSampling
@@ -30,6 +30,12 @@ def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
     return aggregated_metrics
 
 
+def report_carbon_emissions(metrics: List[Tuple[int, Metrics]]) -> Metrics:
+    for num_examples, m in metrics:
+        print(f"Client with {num_examples} samples emitted {m['carbon']} kgCO2")
+    return {}
+
+
 strategy = FedAvg(
     fraction_fit=0.6,  # Sample 60% of available clients for training
     fraction_evaluate=1,  # Sample 100% of available clients for evaluation
@@ -37,10 +43,11 @@ strategy = FedAvg(
     min_evaluate_clients=3,  # Never sample less than 3 clients for evaluation
     min_available_clients=3,  # Wait until all 3 clients are available
     evaluate_metrics_aggregation_fn=weighted_average,  # Use weighted average as custom metric evaluation function
+    fit_metrics_aggregation_fn=report_carbon_emissions,  # Use custom function to report carbon emissions
 )
 
 # Configure the server for 5 rounds of training
-config = ServerConfig(num_rounds=20)
+config = ServerConfig(num_rounds=10)
 
 
 def server_fn(context: Context) -> ServerAppComponents:

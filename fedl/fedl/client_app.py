@@ -3,6 +3,7 @@ from pathlib import Path
 
 import os
 import torch
+from codecarbon import track_emissions, EmissionsTracker
 from flwr.client import NumPyClient, Client, ClientApp
 from flwr.client.mod import secaggplus_mod
 from flwr.common import Context, Config, Scalar
@@ -42,9 +43,17 @@ class FlowerClient(NumPyClient):
     #     allow_multiple_runs=True
     # )
     def fit(self, parameters, config):
+        tracker = EmissionsTracker(
+            measure_power_secs=10,
+            experiment_id="2ef8bb00-570a-4110-b59f-68f8b5e5fd2a",
+            save_to_api=False,
+            allow_multiple_runs=True
+        )
         self.net.set_parameters(parameters)
+        tracker.start()
         self.net.train_model(self.trainloader, self.valloader, batch_mode=True, epochs=1)
-        return self.net.get_parameters(), len(self.trainloader), {}
+        emissions = tracker.stop()
+        return self.net.get_parameters(), len(self.trainloader), {"carbon": emissions}
 
     def evaluate(self, parameters, config):
         self.net.set_parameters(parameters)
@@ -66,7 +75,7 @@ def construct_flower_client(client_id, context):
     graph_data = load(Path(f'{root}/data/graph/worker{client_id}-traces-75min.pt'))
     graph_data.x[:, 18] = torch.zeros_like(graph_data.x[:, 18])
     graph_data.x[:, 19] = torch.zeros_like(graph_data.x[:, 19])
-    num_parts = 1000
+    num_parts = len(graph_data.x) // 1000
 
     batches = RandomNodeLoader(graph_data, num_parts=num_parts, shuffle=True)
     train_loader, validation_loader, test_loader = [], [], []

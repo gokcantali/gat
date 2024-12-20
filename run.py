@@ -198,6 +198,7 @@ def run(config=None, mode='train'):
 
         start_time = time.time()
         gcn_model = initialize_gcn_model(4, 25)
+        gcn_model.load_state_dict(torch.load('best_model.pth'))
         training_metrics = gcn_model.train_model(train_data, validation_data, batch_mode=True)
         end_time = time.time()
         print(f"Total Training Time: {end_time - start_time}")
@@ -213,7 +214,7 @@ def run(config=None, mode='train'):
         print(confusion_matrix(y_true, y_pred))
         # return confusion_matrix(y_true, y_pred)
 
-        with open('worker1-results.txt', 'a') as file:
+        with open('worker1-results-fl-params.txt', 'a') as file:
             file.write(str(confusion_matrix(y_true, y_pred)) + '\n')
 
 
