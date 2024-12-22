@@ -70,13 +70,12 @@ def construct_flower_client(client_id, context):
     # Note: each client gets a different trainloader/valloader, so each client
     # will train and evaluate on their own unique data partition
     # Read the node_config to fetch data partition associated to this node
+    num_parts = 50
 
     root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
     graph_data = load(Path(f'{root}/data/graph/worker{client_id}-traces-75min.pt'))
     graph_data.x[:, 18] = torch.zeros_like(graph_data.x[:, 18])
     graph_data.x[:, 19] = torch.zeros_like(graph_data.x[:, 19])
-    num_parts = len(graph_data.x) // 1000
-
     batches = RandomNodeLoader(graph_data, num_parts=num_parts, shuffle=True)
     train_loader, validation_loader, test_loader = [], [], []
     y_true = []
