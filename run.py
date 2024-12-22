@@ -320,7 +320,7 @@ if __name__ == "__main__":
         for test_worker_ind in range(5):
             for _ in range(TRIALS):
                 run_with_different_training_and_test_graphs(
-                    train_graph=f"worker{TRAIN_WORKER_IND}-traces-75min.pt",
-                    test_graph=f"worker{test_worker_ind}-traces-75min.pt",
+                    train_graph=f"worker{TRAIN_WORKER_IND}-traces-75min-train.pt",
+                    test_graph=f"worker{test_worker_ind}-traces-75min-test.pt",
                     use_pretrained_model=use_pretrained_model
                 )
