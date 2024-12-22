@@ -47,7 +47,7 @@ strategy = FedAvg(
 )
 
 # Configure the server for 5 rounds of training
-config = ServerConfig(num_rounds=10)
+config = ServerConfig(num_rounds=20)
 
 
 def server_fn(context: Context) -> ServerAppComponents:

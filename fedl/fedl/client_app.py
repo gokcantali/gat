@@ -71,19 +71,26 @@ def construct_flower_client(client_id, context):
     # will train and evaluate on their own unique data partition
     # Read the node_config to fetch data partition associated to this node
     num_parts = 50
-
     root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-    graph_data = load(Path(f'{root}/data/graph/worker{client_id}-traces-75min.pt'))
-    graph_data.x[:, 18] = torch.zeros_like(graph_data.x[:, 18])
-    graph_data.x[:, 19] = torch.zeros_like(graph_data.x[:, 19])
-    batches = RandomNodeLoader(graph_data, num_parts=num_parts, shuffle=True)
-    train_loader, validation_loader, test_loader = [], [], []
-    y_true = []
-    for ind, batch in enumerate(batches):
-        if ind < TEST_SIZE * num_parts:
-            test_loader.append(batch)
-            y_true += batch.y
-        elif ind < (TEST_SIZE + VALIDATION_SIZE) * num_parts:
+
+    test_graph_data = load(Path(f'{root}/data/graph/worker{client_id}-traces-75min-test.pt'))
+    test_graph_data.x[:, 18] = torch.zeros_like(test_graph_data.x[:, 18])
+    test_graph_data.x[:, 19] = torch.zeros_like(test_graph_data.x[:, 19])
+
+    test_loader, y_true = [], []
+    test_batches = RandomNodeLoader(test_graph_data, num_parts=num_parts, shuffle=True)
+    for _, batch in enumerate(test_batches):
+        test_loader.append(batch)
+        y_true += batch.y
+
+    train_graph_data = load(Path(f'{root}/data/graph/worker{client_id}-traces-75min-train.pt'))
+    train_graph_data.x[:, 18] = torch.zeros_like(train_graph_data.x[:, 18])
+    train_graph_data.x[:, 19] = torch.zeros_like(train_graph_data.x[:, 19])
+
+    train_loader, validation_loader = [], []
+    train_batches = RandomNodeLoader(train_graph_data, num_parts=num_parts, shuffle=True)
+    for ind, batch in enumerate(train_batches):
+        if ind < (VALIDATION_SIZE / (VALIDATION_SIZE + TRAIN_SIZE)) * num_parts:
             validation_loader.append(batch)
         else:
             train_loader.append(batch)
