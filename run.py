@@ -1,5 +1,6 @@
 import os
 import time
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -15,8 +16,8 @@ from gat.gcn import GCN
 from gat.preprocesser import preprocess_df, preprocess_X, preprocess_y, construct_port_scan_label
 
 RANDOM_STATE = 42
-TEST_SIZE = 0.10
-VALIDATION_SIZE = 0.10
+TEST_SIZE = 0.20
+VALIDATION_SIZE = 0.20
 TRAIN_SIZE = 1 - VALIDATION_SIZE - TEST_SIZE
 
 
@@ -102,6 +103,93 @@ def initialize_gcn_model(num_classes, num_of_features=25, config=None):
         patience=config.patience
     )
     return model
+
+
+def create_stratified_knn_graphs(file_name):
+    df = load_data(sampling_ratio=1, file_path=Path(f"data/{file_name}.csv"))
+    df = construct_port_scan_label(df, use_diversity_index=True)
+    df["is_anomaly"] = df["is_anomaly"].replace({"True": 1, "False": 0}).astype(int)
+
+    # preprocess the data file and creates dataframe
+    X = preprocess_X(df, use_diversity_index=True)
+    y = df['anomaly_class']
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, stratify=y, test_size=TEST_SIZE
+    )
+
+    # creates the graph for the training phase
+    train_graph = convert_to_graph(
+        X=X_train,
+        y=y_train
+    )
+    save_graph_data(train_graph, f'{file_name}-train.pt')
+
+    # creates the graph for the testing phase
+    test_graph = convert_to_graph(
+        X=X_test,
+        y=y_test
+    )
+    save_graph_data(test_graph, f'{file_name}-test.pt')
+
+
+def run_with_different_training_and_test_graphs(
+    train_graph, test_graph, use_pretrained_model=False
+):
+    num_parts = 50
+
+    test_graph_data = load_graph_data(test_graph)
+    test_graph_data.x[:, 18] = torch.zeros_like(test_graph_data.x[:, 18])
+    test_graph_data.x[:, 19] = torch.zeros_like(test_graph_data.x[:, 19])
+
+    test_data = []
+    test_batches = RandomNodeLoader(test_graph_data, num_parts=num_parts, shuffle=True)
+    y_true = []
+    for _, batch in enumerate(test_batches):
+        test_data.append(batch)
+        y_true += batch.y
+
+    gcn_model = initialize_gcn_model(4, 25)
+    if use_pretrained_model is True:
+        gcn_model.load_state_dict(torch.load('best_model_FL.pt'))
+
+    else:
+        train_graph_data = load_graph_data(train_graph)
+        train_graph_data.x[:, 18] = torch.zeros_like(train_graph_data.x[:, 18])
+        train_graph_data.x[:, 19] = torch.zeros_like(train_graph_data.x[:, 19])
+
+        start_time = time.time()
+        train_data, validation_data = [], []
+        train_batches = RandomNodeLoader(train_graph_data, num_parts=num_parts, shuffle=True)
+        for ind, batch in enumerate(train_batches):
+            if ind < (VALIDATION_SIZE / (VALIDATION_SIZE + TRAIN_SIZE)) * num_parts:
+                validation_data.append(batch)
+            else:
+                train_data.append(batch)
+        end_time = time.time()
+        print(f"Time for batching data: {end_time - start_time}")
+
+        start_time = time.time()
+        training_metrics = gcn_model.train_model(train_data, validation_data, batch_mode=True)
+        end_time = time.time()
+        print(f"Total Training Time: {end_time - start_time}")
+        print("=======TRAINING COMPLETED!=======\n")
+
+    start_time = time.time()
+    y_pred, _, _ = gcn_model.test_model_batch_mode(test_data)
+    end_time = time.time()
+    print(f"Total Testing Time: {end_time - start_time}")
+    print("=====TEST RESULTS=======")
+    print(confusion_matrix(y_true, y_pred))
+    # return confusion_matrix(y_true, y_pred)
+
+    experiment_result_file_name = f"train-{train_graph.split('-')[0]}"
+    experiment_result_file_name += f"-test-{test_graph.split('-')[0]}"
+    if use_pretrained_model is True:
+        experiment_result_file_name += "-FL"
+    experiment_result_file_name += ".txt"
+
+    with open(experiment_result_file_name, 'a') as file:
+        file.write(str(confusion_matrix(y_true, y_pred)) + '\n')
 
 
 def run(config=None, mode='train'):
@@ -219,4 +307,20 @@ def run(config=None, mode='train'):
 
 
 if __name__ == "__main__":
-    run(mode='test')
+    # run(mode='test')
+    # create_stratified_knn_graphs("master-traces-75min")
+    # run_with_different_training_and_test_graphs(
+    #     "worker3-traces-75min.pt", "worker4-traces-75min.pt",
+    #     use_pretrained_model=True
+    # )
+
+    TRIALS = 10
+    TRAIN_WORKER_IND = 0
+    for use_pretrained_model in [False, True]:
+        for test_worker_ind in range(5):
+            for _ in range(TRIALS):
+                run_with_different_training_and_test_graphs(
+                    train_graph=f"worker{TRAIN_WORKER_IND}-traces-75min.pt",
+                    test_graph=f"worker{test_worker_ind}-traces-75min.pt",
+                    use_pretrained_model=use_pretrained_model
+                )
