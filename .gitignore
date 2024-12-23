@@ -35,3 +35,4 @@ data/
 results/
 best_model.pth
 best_model_FL.pt
+best_model_FL_*

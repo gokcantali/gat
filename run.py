@@ -133,7 +133,8 @@ def create_stratified_knn_graphs(file_name):
 
 
 def run_with_different_training_and_test_graphs(
-    train_graph, test_graph, use_pretrained_model=False
+    train_graph, test_graph,
+    use_pretrained_model=False, fl_rounds=20
 ):
     num_parts = 50
 
@@ -150,7 +151,7 @@ def run_with_different_training_and_test_graphs(
 
     gcn_model = initialize_gcn_model(4, 25)
     if use_pretrained_model is True:
-        gcn_model.load_state_dict(torch.load('best_model_FL.pt'))
+        gcn_model.load_state_dict(torch.load(f'best_model_FL_{fl_rounds}.pt'))
 
     else:
         train_graph_data = load_graph_data(train_graph)
@@ -185,7 +186,7 @@ def run_with_different_training_and_test_graphs(
     experiment_result_file_name = f"train-{train_graph.split('-')[0]}"
     experiment_result_file_name += f"-test-{test_graph.split('-')[0]}"
     if use_pretrained_model is True:
-        experiment_result_file_name += "-FL"
+        experiment_result_file_name += f"-FL-{fl_rounds}"
     experiment_result_file_name += ".txt"
 
     with open(experiment_result_file_name, 'a') as file:
@@ -322,5 +323,6 @@ if __name__ == "__main__":
                 run_with_different_training_and_test_graphs(
                     train_graph=f"worker{TRAIN_WORKER_IND}-traces-75min-train.pt",
                     test_graph=f"worker{test_worker_ind}-traces-75min-test.pt",
-                    use_pretrained_model=use_pretrained_model
+                    use_pretrained_model=use_pretrained_model,
+                    fl_rounds=50
                 )
