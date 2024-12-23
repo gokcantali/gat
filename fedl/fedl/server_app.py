@@ -40,7 +40,7 @@ def report_carbon_emissions(metrics: List[Tuple[int, Metrics]]) -> Metrics:
     return {"total_emission": total_emission}
 
 
-strategy = FedAvgCF(
+strategy = FedAvg(
     fraction_fit=0.6,  # Sample 60% of available clients for training
     fraction_evaluate=1,  # Sample 100% of available clients for evaluation
     min_fit_clients=3,  # Never sample less than 3 clients for training
@@ -65,7 +65,7 @@ def server_fn(context: Context) -> ServerAppComponents:
     return ServerAppComponents(
         config=config,
         strategy=strategy,
-        client_manager=SimpleClientManagerWithPrioritizedSampling()
+        # client_manager=SimpleClientManagerWithPrioritizedSampling()
     )
 
 
