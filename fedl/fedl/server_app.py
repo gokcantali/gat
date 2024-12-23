@@ -31,9 +31,13 @@ def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
 
 
 def report_carbon_emissions(metrics: List[Tuple[int, Metrics]]) -> Metrics:
+    total_emission = 0.0
     for num_examples, m in metrics:
         print(f"Client with {num_examples} samples emitted {m['carbon']} kgCO2")
-    return {}
+        total_emission += m["carbon"]
+    with open("carbon_emissions.txt", "a") as f:
+        f.write(f"{total_emission}\n")
+    return {"total_emission": total_emission}
 
 
 strategy = FedAvgCF(
@@ -46,8 +50,8 @@ strategy = FedAvgCF(
     fit_metrics_aggregation_fn=report_carbon_emissions,  # Use custom function to report carbon emissions
 )
 
-# Configure the server for 5 rounds of training
-config = ServerConfig(num_rounds=5)
+# Configure the server for 60 rounds of training
+config = ServerConfig(num_rounds=60)
 
 
 def server_fn(context: Context) -> ServerAppComponents:
@@ -59,7 +63,8 @@ def server_fn(context: Context) -> ServerAppComponents:
     """
 
     return ServerAppComponents(
-        strategy=strategy, config=config,
+        config=config,
+        strategy=strategy,
         client_manager=SimpleClientManagerWithPrioritizedSampling()
     )
 

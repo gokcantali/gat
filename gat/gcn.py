@@ -287,7 +287,7 @@ class GCN(torch.nn.Module):
         }
         return predictions, mean(losses), perf_metrics
 
-    def set_parameters(self, parameters: List[np.ndarray], fl_rounds=20):
+    def set_parameters(self, parameters: List[np.ndarray], fl_rounds=60):
         params_dict = zip(self.state_dict().keys(), parameters)
         state_dict = OrderedDict({k: torch.Tensor(v) for k, v in params_dict})
         self.load_state_dict(state_dict, strict=True)
