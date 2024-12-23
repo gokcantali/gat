@@ -28,7 +28,6 @@ class FlowerClient(NumPyClient):
         self.testloader = testloader
 
     def get_properties(self, config: Config) -> dict[str, Scalar]:
-        print("Node config: ", self.context.node_config)
         return self.get_context().node_config
 
     def get_parameters(self, config):
@@ -53,6 +52,7 @@ class FlowerClient(NumPyClient):
         tracker.start()
         self.net.train_model(self.trainloader, self.valloader, batch_mode=True, epochs=1)
         emissions = tracker.stop()
+        self.emissions = emissions
         return self.net.get_parameters(), len(self.trainloader), {"carbon": emissions}
 
     def evaluate(self, parameters, config):
