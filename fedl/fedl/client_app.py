@@ -1,3 +1,4 @@
+import math
 from pathlib import Path
 # from codecarbon import track_emissions
 
@@ -52,7 +53,7 @@ class FlowerClient(NumPyClient):
         tracker.start()
         self.net.train_model(self.trainloader, self.valloader, batch_mode=True, epochs=1)
         emissions = tracker.stop()
-        self.emissions = emissions
+        self.emissions = emissions if not math.isnan(emissions) else emissions
         return self.net.get_parameters(), len(self.trainloader), {"carbon": emissions}
 
     def evaluate(self, parameters, config):

@@ -40,7 +40,7 @@ def report_carbon_emissions(metrics: List[Tuple[int, Metrics]]) -> Metrics:
     return {"total_emission": total_emission}
 
 
-strategy = FedAvg(
+strategy = FedAvgCF(
     fraction_fit=0.6,  # Sample 60% of available clients for training
     fraction_evaluate=1,  # Sample 100% of available clients for evaluation
     min_fit_clients=3,  # Never sample less than 3 clients for training
@@ -48,6 +48,8 @@ strategy = FedAvg(
     min_available_clients=3,  # Wait until all 3 clients are available
     evaluate_metrics_aggregation_fn=weighted_average,  # Use weighted average as custom metric evaluation function
     fit_metrics_aggregation_fn=report_carbon_emissions,  # Use custom function to report carbon emissions
+    alpha=0.5,
+    window=4,
 )
 
 # Configure the server for 60 rounds of training
@@ -65,7 +67,7 @@ def server_fn(context: Context) -> ServerAppComponents:
     return ServerAppComponents(
         config=config,
         strategy=strategy,
-        # client_manager=SimpleClientManagerWithPrioritizedSampling()
+        client_manager=SimpleClientManagerWithPrioritizedSampling()
     )
 
 

@@ -1,5 +1,7 @@
+import math
 import random
-from logging import INFO, WARNING
+import traceback
+from logging import INFO, WARNING, ERROR
 from typing import Optional, Union
 
 import numpy as np
@@ -56,9 +58,7 @@ class SimpleClientManagerWithCustomSampling(SimpleClientManager):
         #     available_cids, size=num_clients,
         #     replace=False, p=weights/np.sum(weights)
         # )
-        sampled_cids = np.random.choice(
-            available_cids, size=num_clients, replace=False
-        )
+        sampled_cids = np.random.choice(available_cids, size=num_clients, replace=False)
 
         log(WARNING, "Here are the selected clients:")
         for cid in sampled_cids:
@@ -66,7 +66,7 @@ class SimpleClientManagerWithCustomSampling(SimpleClientManager):
             client_props = self.clients[cid].get_properties(
                 ins=GetPropertiesIns(config={"emissions": True}),
                 timeout=30,
-                group_id=None
+                group_id=None,
             )
             log(WARNING, f"Properties: {client_props}")
         return [self.clients[cid] for cid in sampled_cids]
@@ -79,17 +79,8 @@ class SimpleClientManagerWithPrioritizedSampling(SimpleClientManager):
         priorities: dict[str, float],
         min_num_clients: Optional[int] = None,
         criterion: Optional[Criterion] = None,
-
     ) -> list[ClientProxy]:
         """Sample a number of Flower ClientProxy instances."""
-        # if priorities are empty, fallback to standard sampling
-        if len(priorities.keys()) == 0 or np.sum(list(priorities.values())) <= 0.0:
-            return super().sample(
-                num_clients=num_clients,
-                min_num_clients=min_num_clients,
-                criterion=criterion,
-            )
-
         log(WARNING, f"Priorities: {priorities}")
 
         # Block until at least num_clients are connected.
@@ -127,8 +118,7 @@ class SimpleClientManagerWithPrioritizedSampling(SimpleClientManager):
         prior_weights /= np.sum(prior_weights)
 
         sampled_cids = np.random.choice(
-            available_cids, size=num_clients,
-            replace=False, p=prior_weights
+            available_cids, size=num_clients, replace=False, p=prior_weights
         )
 
         log(WARNING, f"Priority weights: {prior_weights}")
@@ -137,13 +127,20 @@ class SimpleClientManagerWithPrioritizedSampling(SimpleClientManager):
             log(WARNING, cid)
         return [self.clients[cid] for cid in sampled_cids]
 
+
 class FedAvgCF(FedAvg):
-    def __init__(self, **kwargs):
+    def __init__(self, alpha: float, window: int, **kwargs):
         super().__init__(**kwargs)
-        self.emission_mapping: dict[str, list[float]] = {}
+        self.alpha = alpha
+        self.window = window
+        self.norm = self.alpha * (1 - self.alpha ** self.window) / (1 - self.alpha)
+        self.emission_mapping: dict[str, dict[int, float]] = {}
 
     def configure_fit(
-        self, server_round: int, parameters: Parameters, client_manager: SimpleClientManagerWithPrioritizedSampling
+        self,
+        server_round: int,
+        parameters: Parameters,
+        client_manager: SimpleClientManagerWithPrioritizedSampling,
     ) -> list[tuple[ClientProxy, FitIns]]:
         """Configure the next round of training."""
         config = {}
@@ -157,13 +154,39 @@ class FedAvgCF(FedAvg):
             client_manager.num_available()
         )
 
-        priorities = self._calculate_carbon_based_priorities()
+        if server_round <= self.window:
+            log(WARNING, f"Round: {server_round} <= Window: {self.window} - Skipping...")
+            clients = client_manager.sample(
+                num_clients=sample_size,
+                min_num_clients=min_num_clients,
+            )
+        else:
+            priorities = self._calculate_carbon_based_priorities_using_smoothing(
+                server_round=server_round
+            )
 
-        clients = client_manager.sample_with_priority(
-            num_clients=sample_size,
-            priorities=priorities,
-            min_num_clients=min_num_clients
-        )
+            # if priorities are empty, fallback to standard sampling
+            if len(priorities.keys()) == 0 or np.sum(list(priorities.values())) <= 0.0:
+                clients = client_manager.sample(
+                    num_clients=sample_size,
+                    min_num_clients=min_num_clients,
+                )
+            else:
+                try:
+                    # handles errors that might occur during the prioritized sampling
+                    clients = client_manager.sample_with_priority(
+                        num_clients=sample_size,
+                        priorities=priorities,
+                        min_num_clients=min_num_clients,
+                    )
+                except Exception as _:
+                    log(ERROR, traceback.format_exc())
+
+                    # fallback to the simple sampling
+                    clients = client_manager.sample(
+                        num_clients=sample_size,
+                        min_num_clients=min_num_clients,
+                    )
 
         # Return client/config pairs
         return [(client, fit_ins) for client in clients]
@@ -177,27 +200,26 @@ class FedAvgCF(FedAvg):
         for client_proxy, fit_res in results:
             cid = client_proxy.cid
             if cid not in self.emission_mapping:
-                self.emission_mapping[cid] = []
-            self.emission_mapping[cid].append(
-                fit_res.metrics.get("carbon", -1.0)
-            )
+                self.emission_mapping[cid] = {}
+            carbon_emission = fit_res.metrics.get("carbon", -1.0)
+            self.emission_mapping[cid][server_round] = carbon_emission
 
-        log(WARNING, f"Carbon Emissions: {self.emission_mapping}")
+        # log(WARNING, f"Carbon Emissions: {self.emission_mapping}")
 
         return super().aggregate_fit(
-            server_round=server_round,
-            results=results,
-            failures=failures
+            server_round=server_round, results=results, failures=failures
         )
 
     def _calculate_carbon_based_priorities(self):
         priorities = {}
         mean_emission_total = 0.0
         for cid, emissions in self.emission_mapping.items():
-            if np.mean(emissions) < 0:
+            if np.mean(list(emissions.values())) < 0:
                 priorities[cid] = -1
             else:
-                priorities[cid] = np.mean(list(filter(lambda e: e > 0, emissions)))
+                priorities[cid] = np.mean(
+                    list(filter(lambda e: e > 0, list(emissions.values())))
+                )
             mean_emission_total += priorities[cid]
 
         if mean_emission_total <= 0.0:
@@ -208,6 +230,70 @@ class FedAvgCF(FedAvg):
                 if priorities[cid] > 0:
                     priorities[cid] = mean_emission_total / priorities[cid]
                 else:
-                    priorities[cid] = mean_emission_total / len(self.emission_mapping.keys())
+                    priorities[cid] = mean_emission_total / len(
+                        self.emission_mapping.keys()
+                    )
 
         return priorities
+
+    def _calculate_carbon_based_priorities_using_smoothing(
+        self,
+        server_round: int,
+    ):
+        """uses a simple exponential smoothing logic for estimating
+        the next round carbon emission and determine the priorities"""
+
+        # calculate the mean emission per round across clients
+        mean_emission_per_round = {}
+        for fl_round in range(server_round - self.window, server_round, 1):
+            measurement_count = 0
+            total_emission_in_round = 0.0
+            for _, emissions in self.emission_mapping.items():
+                emission = emissions.get(fl_round, -1)
+                if not emission or emission <= 0 or math.isnan(emission):
+                    continue
+                measurement_count += 1
+                total_emission_in_round += emission
+            if measurement_count != 0:
+                mean_emission_per_round[fl_round] = (
+                    total_emission_in_round / measurement_count
+                )
+
+        # if no measurement across any rounds of the time window,
+        # return equal priorities
+        if len(mean_emission_per_round.keys()) == 0:
+            return {cid: 1 for cid in self.emission_mapping.keys()}
+
+        # if there is non-measured rounds, take the mean across
+        # measurements across available rounds
+        for fl_round in range(server_round - self.window, server_round, 1):
+            if fl_round not in mean_emission_per_round:
+                mean_emission_per_round[fl_round] = np.mean(
+                    list(mean_emission_per_round.values())
+                )
+
+        # compute the emission estimations for the next round
+        next_round_emission_estimations = {}
+        for cid, emissions in self.emission_mapping.items():
+            emission_estimation = 0.0
+
+            for i in range(1, self.window+1, 1):
+                fl_round = server_round - i
+                emission = emissions.get(fl_round, -1)
+                if not emission or emission <= 0 or math.isnan(emission):
+                    emission = mean_emission_per_round[fl_round]
+                emission_estimation += emission * self.alpha**i
+
+            next_round_emission_estimations[cid] = emission_estimation / self.norm
+
+        log(WARNING, f"Next Round Estimations: {next_round_emission_estimations}")
+        mean_estimation_for_next_round = np.mean(
+            list(next_round_emission_estimations.values())
+        )
+
+        # calculate and return the priorities based on the proportion of the mean estimation
+        # to each of the client's estimation
+        return {
+            cid: mean_estimation_for_next_round / next_round_emission_estimations[cid]
+            for cid in self.emission_mapping.keys()
+        }
