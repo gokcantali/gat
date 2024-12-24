@@ -291,7 +291,7 @@ class GCN(torch.nn.Module):
         params_dict = zip(self.state_dict().keys(), parameters)
         state_dict = OrderedDict({k: torch.Tensor(v) for k, v in params_dict})
         self.load_state_dict(state_dict, strict=True)
-        torch.save(state_dict, f"best_model_FL_{fl_rounds}_CF_ExpSmooth.pt")
+        torch.save(state_dict, f"best_model_FL_{fl_rounds}_CF_LinRegress.pt")
 
     def get_parameters(self) -> List[np.ndarray]:
         return [val.cpu().numpy() for _, val in self.state_dict().items()]

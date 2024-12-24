@@ -49,7 +49,7 @@ strategy = FedAvgCF(
     evaluate_metrics_aggregation_fn=weighted_average,  # Use weighted average as custom metric evaluation function
     fit_metrics_aggregation_fn=report_carbon_emissions,  # Use custom function to report carbon emissions
     alpha=0.5,
-    window=4,
+    window=5,
 )
 
 # Configure the server for 60 rounds of training

@@ -1,15 +1,17 @@
 import math
-import random
+# import random
 import traceback
 from logging import INFO, WARNING, ERROR
 from typing import Optional, Union
 
 import numpy as np
+import pandas as pd
 from flwr.common import FitIns, Parameters, log, GetPropertiesIns, FitRes, Scalar
 from flwr.server import SimpleClientManager
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.criterion import Criterion
 from flwr.server.strategy import FedAvg
+from sklearn.linear_model import LinearRegression
 
 
 class SimpleClientManagerWithCustomSampling(SimpleClientManager):
@@ -161,7 +163,10 @@ class FedAvgCF(FedAvg):
                 min_num_clients=min_num_clients,
             )
         else:
-            priorities = self._calculate_carbon_based_priorities_using_smoothing(
+            # priorities = self._calculate_carbon_based_priorities_using_smoothing(
+            #     server_round=server_round
+            # )
+            priorities = self._calculate_carbon_based_priorities_using_linear_regression(
                 server_round=server_round
             )
 
@@ -285,6 +290,78 @@ class FedAvgCF(FedAvg):
                 emission_estimation += emission * self.alpha**i
 
             next_round_emission_estimations[cid] = emission_estimation / self.norm
+
+        log(WARNING, f"Next Round Estimations: {next_round_emission_estimations}")
+        mean_estimation_for_next_round = np.mean(
+            list(next_round_emission_estimations.values())
+        )
+
+        # calculate and return the priorities based on the proportion of the mean estimation
+        # to each of the client's estimation
+        return {
+            cid: mean_estimation_for_next_round / next_round_emission_estimations[cid]
+            for cid in self.emission_mapping.keys()
+        }
+
+    def _calculate_carbon_based_priorities_using_linear_regression(
+        self,
+        server_round: int,
+    ):
+        """uses a simple Linear Regression model for estimating
+        the next round carbon emission and determine the priorities"""
+
+        # calculate the mean emission per round across clients
+        mean_emission_per_round = {}
+        for fl_round in range(1, server_round, 1):
+            measurement_count = 0
+            total_emission_in_round = 0.0
+            for _, emissions in self.emission_mapping.items():
+                emission = emissions.get(fl_round, -1)
+                if not emission or emission <= 0 or math.isnan(emission):
+                    continue
+                measurement_count += 1
+                total_emission_in_round += emission
+            if measurement_count != 0:
+                mean_emission_per_round[fl_round] = (
+                    total_emission_in_round / measurement_count
+                )
+
+        # if no measurement across any rounds of the time window,
+        # return equal priorities
+        if len(mean_emission_per_round.keys()) == 0:
+            return {cid: 1 for cid in self.emission_mapping.keys()}
+
+        # if there is non-measured rounds, take the mean across
+        # measurements across available rounds
+        for fl_round in range(1, server_round, 1):
+            if fl_round not in mean_emission_per_round:
+                mean_emission_per_round[fl_round] = np.mean(
+                    list(mean_emission_per_round.values())
+                )
+
+        # compute the emission estimations for the next round
+        next_round_emission_estimations = {}
+        for cid, emissions in self.emission_mapping.items():
+            emission_values_for_regression = []
+            rounds_for_regression = []
+
+            for fl_round in range(1, server_round, 1):
+                emission = emissions.get(fl_round, 0)
+                if not emission or emission <= 0 or math.isnan(emission):
+                    continue
+                rounds_for_regression.append(fl_round)
+                emission_values_for_regression.append(emission)
+
+            if len(rounds_for_regression) < self.window:
+                next_round_emission_estimations[cid] = mean_emission_per_round[server_round-1]
+            else:
+                lin_reg_model = LinearRegression()
+                lin_reg_model.fit(
+                    pd.DataFrame(rounds_for_regression), emission_values_for_regression
+                )
+                next_round_emission_estimations[cid] = (
+                    lin_reg_model.predict(pd.DataFrame([server_round]))[0]
+                )
 
         log(WARNING, f"Next Round Estimations: {next_round_emission_estimations}")
         mean_estimation_for_next_round = np.mean(
