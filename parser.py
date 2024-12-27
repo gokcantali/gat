@@ -1,5 +1,8 @@
 import copy
-import re, json
+import re
+import json
+
+import numpy as np
 
 
 def parse_file_with_confusion_matrices(f_name: str):
@@ -105,67 +108,72 @@ def parse_single_confusion_matrix_and_obtain_metrics(conf_matrix: list[list[int]
     return model_perf_metrics
 
 
-def get_average_metrics_across_experiments(list_of_model_perf_metrics: list[dict]):
+def get_aggregated_metrics_across_experiments(list_of_model_perf_metrics: list[dict]):
     classes = ["benign", "dos", "port", "zap"]
     class_metrics = {
-        "pre": 0.0,
-        "rec": 0.0,
-        "f1": 0.0,
+        "pre": [],
+        "rec": [],
+        "f1": [],
     }
 
-    average_metrics = {
+    aggregated_metrics = {
         "class": {label: copy.deepcopy(class_metrics) for label in classes},
         "general": {
-            "acc": 0.0,
-            "weight_avg_pre": 0.0,
-            "simple_avg_pre": 0.0,
-            "weight_avg_rec": 0.0,
-            "simple_avg_rec": 0.0,
-            "weight_avg_f1": 0.0,
-            "simple_avg_f1": 0.0,
+            "acc": [],
+            "weight_avg_pre": [],
+            "simple_avg_pre": [],
+            "weight_avg_rec": [],
+            "simple_avg_rec": [],
+            "weight_avg_f1": [],
+            "simple_avg_f1": [],
         },
     }
 
-    number_of_experiments = len(list_of_model_perf_metrics)
     for perf_metric_single_experiment in list_of_model_perf_metrics:
         # compute the average of class-based metrics
         for label in classes:
             for metric_name in class_metrics:
-                average_metrics["class"][label][metric_name] += (
+                aggregated_metrics["class"][label][metric_name].append(
                     perf_metric_single_experiment["class"][label][metric_name]
-                    / number_of_experiments
                 )
 
         # compute the average of general metrics
-        for metric_name in list(average_metrics["general"].keys()):
-            average_metrics["general"][metric_name] += (
+        for metric_name in list(aggregated_metrics["general"].keys()):
+            aggregated_metrics["general"][metric_name].append(
                 perf_metric_single_experiment["general"][metric_name]
-                / number_of_experiments
             )
 
-    return average_metrics
+    return aggregated_metrics
 
 
-def print_avg_performance_metrics_into_file(avg_perf_metrics: dict, f_name: str):
+def print_agg_performance_metrics_into_file(agg_perf_metrics: dict, f_name: str):
     class_metrics = ["pre", "rec", "f1"]
+    class_labels = ["benign", "dos", "port", "zap"]
+
     general_metrics = [
         "acc\t\t\t", "weight_avg_pre", "simple_avg_pre",
         "weight_avg_rec", "simple_avg_rec", "weight_avg_f1", "simple_avg_f1"
     ]
     with open(f_name, "w") as file:
-        file.write("Metric\t\t\t\tBenign\t\t\t\t\tDoS\t\t\t\t\t\tPort\t\t\t\t\tZap\t\t\t\t\t\tGeneral\n")
+        file.write("Metric\t\t\tBenign\t\t\t\tDoS\t\t\t\t\tPort\t\t\t\tZap\t\t\t\t\tGeneral\n")
         for metric in class_metrics:
-            file.write(metric+"\t\t\t\t\t")
-            file.write(str(avg_perf_metrics["class"]["benign"][metric])+"\t\t")
-            file.write(str(avg_perf_metrics["class"]["dos"][metric]) + "\t\t")
-            file.write(str(avg_perf_metrics["class"]["port"][metric]) + "\t\t")
-            file.write(str(avg_perf_metrics["class"]["zap"][metric]) + "\t\t")
+            file.write(metric+"\t\t\t\t")
+            for label in class_labels:
+                agg_metric_values = agg_perf_metrics["class"][label][metric]
+                metric_mean, metric_std = np.mean(agg_metric_values), np.std(agg_metric_values)
+
+                file.write(str(round(metric_mean, 5)))
+                file.write(f" ({round(metric_std, 5):.5f})\t")
             file.write("\n")
         file.write("\n")
         for metric in general_metrics:
+            agg_metric_values = agg_perf_metrics["general"][metric.strip()]
+            metric_mean, metric_std = np.mean(agg_metric_values), np.std(agg_metric_values)
+
             file.write(metric+"\t\t")
-            file.write("\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t")
-            file.write(str(avg_perf_metrics["general"][metric.strip()]))
+            file.write("\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t")
+            file.write(str(round(metric_mean, 5)))
+            file.write(f" ({round(metric_std, 5):.5f})")
             file.write("\n")
 
 
@@ -181,11 +189,11 @@ if __name__ == "__main__":
     #     list_of_perf_metrics.append(perf_metrics)
     #
     # print("\nAvg Metrics across Experiments:")
-    # average_performance_metrics = get_average_metrics_across_experiments(list_of_perf_metrics)
+    # average_performance_metrics = get_aggregated_metrics_across_experiments(list_of_perf_metrics)
     # print(average_performance_metrics)
     #
     # output_file_name = "performance-results-train-worker0-test-worker0-FL-60-CF-ExpSmooth.txt"
-    # print_avg_performance_metrics_into_file(
+    # print_agg_performance_metrics_into_file(
     #     average_performance_metrics, output_file_name
     # )
     suffixes = [
@@ -214,5 +222,5 @@ if __name__ == "__main__":
                     parse_single_confusion_matrix_and_obtain_metrics(c_matrix)
                     for c_matrix in conf_matrices
                 ]
-                avg_perf_metrics = get_average_metrics_across_experiments(perf_metrics)
-                print_avg_performance_metrics_into_file(avg_perf_metrics, output_file_name)
+                aggregated_perf_metrics = get_aggregated_metrics_across_experiments(perf_metrics)
+                print_agg_performance_metrics_into_file(aggregated_perf_metrics, output_file_name)
