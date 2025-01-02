@@ -50,6 +50,7 @@ strategy = FedAvgCF(
     fit_metrics_aggregation_fn=report_carbon_emissions,  # Use custom function to report carbon emissions
     alpha=0.5,
     window=5,
+    method="simple_avg"
 )
 
 # Configure the server for 60 rounds of training

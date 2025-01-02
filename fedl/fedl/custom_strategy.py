@@ -157,11 +157,11 @@ class SimpleClientManagerWithPrioritizedSampling(SimpleClientManager):
 
 
 class FedAvgCF(FedAvg):
-    def __init__(self, alpha: float, window: int, **kwargs):
+    def __init__(self, alpha: float, window: int, method: str = "lin_reg", **kwargs):
         super().__init__(**kwargs)
         self.alpha = alpha
         self.window = window
-        self.norm = self.alpha * (1 - self.alpha ** self.window) / (1 - self.alpha)
+        self.method = method
         self.emission_mapping: dict[str, dict[int, float]] = {}
 
     def configure_fit(
@@ -183,18 +183,25 @@ class FedAvgCF(FedAvg):
         )
 
         if server_round <= self.window:
-            log(WARNING, f"Round: {server_round} <= Window: {self.window} - Skipping...")
+            log(INFO, f"Round: {server_round} <= Window: {self.window} - Skipping...")
             clients = client_manager.sample(
                 num_clients=sample_size,
                 min_num_clients=min_num_clients,
             )
         else:
-            priorities = self._calculate_carbon_based_priorities_using_smoothing(
-                server_round=server_round
-            )
-            # priorities = self._calculate_carbon_based_priorities_using_linear_regression(
-            #     server_round=server_round
-            # )
+            if self.method == "lin_reg":
+                priorities = self._calculate_carbon_based_priorities_using_linear_regression(
+                    server_round=server_round
+                )
+            elif self.method == "exp_smooth":
+                priorities = self._calculate_carbon_based_priorities_using_smoothing(
+                    server_round=server_round
+                )
+            elif self.method == "simple_avg":
+                priorities = self._calculate_carbon_based_priorities()
+            else:
+                log(WARNING, f"Method: {self.method} not implemented! Fallback to standard sampling...")
+                priorities = {}
 
             # if priorities are empty, fallback to standard sampling
             if len(priorities.keys()) == 0 or np.sum(list(priorities.values())) <= 0.0:
