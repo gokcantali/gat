@@ -14,6 +14,14 @@ from flwr.server.strategy import FedAvg
 from sklearn.linear_model import LinearRegression
 
 
+CF_METHODS = {
+    "simple_avg": "CF_SimpleAvg",
+    "exp_smooth": "CF_ExpSmooth",
+    "lin_reg": "CF_LinRegress",
+    "non_cf": "NON_CF"
+}
+
+
 def exponential_smoothing(data, alpha):
     """
     Apply simple exponential smoothing to a time-series data.
@@ -38,66 +46,6 @@ def exponential_smoothing(data, alpha):
         smoothed_data.append(smoothed_value)
 
     return smoothed_data
-
-
-class SimpleClientManagerWithCustomSampling(SimpleClientManager):
-    def sample_with_probability(
-        self,
-        num_clients: int,
-        min_num_clients: Optional[int] = None,
-        criterion: Optional[Criterion] = None,
-    ) -> list[ClientProxy]:
-        """Sample a number of Flower ClientProxy instances."""
-        # Block until at least num_clients are connected.
-        if min_num_clients is None:
-            min_num_clients = num_clients
-        self.wait_for(min_num_clients)
-        # Sample clients which meet the criterion
-        available_cids = list(self.clients)
-        if criterion is not None:
-            available_cids = [
-                cid for cid in available_cids if criterion.select(self.clients[cid])
-            ]
-
-        if num_clients > len(available_cids):
-            log(
-                INFO,
-                "Sampling failed: number of available clients"
-                " (%s) is less than number of requested clients (%s).",
-                len(available_cids),
-                num_clients,
-            )
-            return []
-
-        # apply green energy prioritization logic
-        # assume that clients have a property called "green_energy" which is a boolean
-        # for now, we will assign this property randomly
-        # weights = []
-        # log(WARNING, "Clients with green energy:")
-        # for cid in available_cids:
-        #     green_energy = random.choice([0, 0, 1])
-        #     if green_energy:
-        #         log(WARNING, cid)
-        #         weights.append(10)
-        #     else:
-        #         weights.append(1)
-        #
-        # sampled_cids = np.random.choice(
-        #     available_cids, size=num_clients,
-        #     replace=False, p=weights/np.sum(weights)
-        # )
-        sampled_cids = np.random.choice(available_cids, size=num_clients, replace=False)
-
-        log(WARNING, "Here are the selected clients:")
-        for cid in sampled_cids:
-            log(WARNING, cid)
-            client_props = self.clients[cid].get_properties(
-                ins=GetPropertiesIns(config={"emissions": True}),
-                timeout=30,
-                group_id=None,
-            )
-            log(WARNING, f"Properties: {client_props}")
-        return [self.clients[cid] for cid in sampled_cids]
 
 
 class SimpleClientManagerWithPrioritizedSampling(SimpleClientManager):
@@ -157,11 +105,22 @@ class SimpleClientManagerWithPrioritizedSampling(SimpleClientManager):
 
 
 class FedAvgCF(FedAvg):
-    def __init__(self, alpha: float, window: int, method: str = "lin_reg", **kwargs):
+    def __init__(
+        self, alpha: float, window: int,
+        method: str = "lin_reg", total_rounds: int = 60,
+        trial: str = "First", **kwargs
+    ):
         super().__init__(**kwargs)
         self.alpha = alpha
         self.window = window
+
+        if method not in CF_METHODS:
+            raise Exception(f"Method: {method} not implemented!")
         self.method = method
+
+        self.total_rounds = total_rounds
+        self.trial = trial
+
         self.emission_mapping: dict[str, dict[int, float]] = {}
 
     def configure_fit(
@@ -175,6 +134,13 @@ class FedAvgCF(FedAvg):
         if self.on_fit_config_fn is not None:
             # Custom fit config function provided
             config = self.on_fit_config_fn(server_round)
+        else:
+            # Default fit config function
+            config = {
+                "cf_method": CF_METHODS[self.method],
+                "total_rounds": self.total_rounds,
+                "trial": self.trial,
+            }
         fit_ins = FitIns(parameters, config)
 
         # Sample clients
@@ -199,8 +165,8 @@ class FedAvgCF(FedAvg):
                 )
             elif self.method == "simple_avg":
                 priorities = self._calculate_carbon_based_priorities()
-            else:
-                log(WARNING, f"Method: {self.method} not implemented! Fallback to standard sampling...")
+            else:  # NON_CF
+                log(WARNING, f"Carbon Reduction disabled! Fallback to standard sampling...")
                 priorities = {}
 
             # if priorities are empty, fallback to standard sampling

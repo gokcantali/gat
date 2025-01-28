@@ -49,7 +49,7 @@ class FlowerClient(NumPyClient):
             save_to_api=False,
             allow_multiple_runs=True
         )
-        self.net.set_parameters(parameters)
+        self.net.set_parameters(parameters, config, is_evaluate=False)
         tracker.start()
         self.net.train_model(self.trainloader, self.valloader, batch_mode=True, epochs=1)
         emissions = tracker.stop()
@@ -57,7 +57,7 @@ class FlowerClient(NumPyClient):
         return self.net.get_parameters(), len(self.trainloader), {"carbon": emissions}
 
     def evaluate(self, parameters, config):
-        self.net.set_parameters(parameters)
+        self.net.set_parameters(parameters, config, is_evaluate=True)
         _, loss, perf_metrics = self.net.test_model_batch_mode(self.testloader)
         print("METRICS OF CLIENT:")
         print(perf_metrics)

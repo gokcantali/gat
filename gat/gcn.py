@@ -287,11 +287,30 @@ class GCN(torch.nn.Module):
         }
         return predictions, mean(losses), perf_metrics
 
-    def set_parameters(self, parameters: List[np.ndarray], fl_rounds=60):
+    def set_parameters(self, parameters: List[np.ndarray], config, is_evaluate=False):
+        if config is None:
+            config = {}
         params_dict = zip(self.state_dict().keys(), parameters)
         state_dict = OrderedDict({k: torch.Tensor(v) for k, v in params_dict})
         self.load_state_dict(state_dict, strict=True)
-        torch.save(state_dict, f"best_model_FL_{fl_rounds}_CF_ExpSmooth_second.pt")
+
+        model_file_name = self._construct_model_file_name(config)
+
+        if is_evaluate is False:
+            torch.save(state_dict, model_file_name)
 
     def get_parameters(self) -> List[np.ndarray]:
         return [val.cpu().numpy() for _, val in self.state_dict().items()]
+
+    @staticmethod
+    def _construct_model_file_name(config):
+        total_rounds = config.get("total_rounds", 60)
+        model_file_name = f"best_model_FL_{total_rounds}_"
+
+        cf_method = config.get("cf_method", "NON_CF")
+        model_file_name += cf_method
+
+        trial = config.get("trial", "First")
+        model_file_name += f"-{trial}.pt"
+
+        return model_file_name

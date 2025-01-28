@@ -6,7 +6,7 @@ from flwr.server import ServerAppComponents, ServerConfig, ServerApp, start_serv
 from flwr.server.strategy import FedAvg, FedProx
 from flwr.server.workflow import SecAggPlusWorkflow, DefaultWorkflow
 
-from .custom_strategy import SimpleClientManagerWithPrioritizedSampling, FedAvgCF
+from .custom_strategy import SimpleClientManagerWithPrioritizedSampling, FedAvgCF, CF_METHODS
 
 
 def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
@@ -39,6 +39,9 @@ def report_carbon_emissions(metrics: List[Tuple[int, Metrics]]) -> Metrics:
         f.write(f"{total_emission}\n")
     return {"total_emission": total_emission}
 
+NUM_ROUNDS = 60
+TRIAL = "Eight"
+METHOD = "simple_avg"
 
 strategy = FedAvgCF(
     fraction_fit=0.6,  # Sample 60% of available clients for training
@@ -50,11 +53,13 @@ strategy = FedAvgCF(
     fit_metrics_aggregation_fn=report_carbon_emissions,  # Use custom function to report carbon emissions
     alpha=0.5,
     window=5,
-    method="simple_avg"
+    method=METHOD,
+    trial=TRIAL,
+    total_rounds=NUM_ROUNDS
 )
 
-# Configure the server for 60 rounds of training
-config = ServerConfig(num_rounds=60)
+# Configure the server for <NUM_ROUNDS> rounds of training
+config = ServerConfig(num_rounds=NUM_ROUNDS)
 
 
 def server_fn(context: Context) -> ServerAppComponents:
