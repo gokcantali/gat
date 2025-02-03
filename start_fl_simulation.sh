@@ -1,7 +1,7 @@
 # adjust the FL configuration parameters before the simulation
-sed -i '' -E "s/NUM_ROUNDS = (.+)/NUM_ROUNDS = $1/g" ./fedl/fedl/server_app.py
-sed -i '' -E "s/METHOD = \"(.+)\"/METHOD = \"$2\"/g" ./fedl/fedl/server_app.py
-sed -i '' -E "s/TRIAL = \"(.+)\"/TRIAL = \"$3\"/g" ./fedl/fedl/server_app.py
+sed -i.bak -E "s/NUM_ROUNDS = (.+)/NUM_ROUNDS = $1/g" ./fedl/fedl/server_app.py
+sed -i.bak -E "s/METHOD = \"(.+)\"/METHOD = \"$2\"/g" ./fedl/fedl/server_app.py
+sed -i.bak -E "s/TRIAL = \"(.+)\"/TRIAL = \"$3\"/g" ./fedl/fedl/server_app.py
 
 # start the FL simulation, assuming that
 # the superlink and the server-app are hosted on the same machine
