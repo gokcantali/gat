@@ -30,6 +30,10 @@ def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
     return aggregated_metrics
 
 
+NUM_ROUNDS = 70
+METHOD = "lin_reg"
+TRIAL = "fifteenth"
+
 def report_carbon_emissions(metrics: List[Tuple[int, Metrics]]) -> Metrics:
     total_emission = 0.0
     for num_examples, m in metrics:
@@ -39,9 +43,6 @@ def report_carbon_emissions(metrics: List[Tuple[int, Metrics]]) -> Metrics:
         f.write(f"{total_emission}\n")
     return {"total_emission": total_emission}
 
-NUM_ROUNDS = 60
-TRIAL = "Eight"
-METHOD = "simple_avg"
 
 strategy = FedAvgCF(
     fraction_fit=0.6,  # Sample 60% of available clients for training
@@ -69,6 +70,17 @@ def server_fn(context: Context) -> ServerAppComponents:
     construction of all elements (e.g the strategy or the number of rounds)
     wrapped in the returned ServerAppComponents object.
     """
+
+    global NUM_ROUNDS, TRIAL, METHOD
+
+    # add a new subheader in the carbon emission file
+    # before the next simulation starts
+    with open("carbon_emissions.txt", "a") as f:
+        subheader = "\n====== "
+        subheader += "WITHOUT OPTIMIZATION" if METHOD == 'non_cf' else "WITH OPTIMIZATION"
+        subheader += f" - {NUM_ROUNDS} Rounds - {METHOD} Algorithm - {TRIAL} TRIAL"
+        subheader += " - CLOUD ======\n"
+        f.write(subheader)
 
     return ServerAppComponents(
         config=config,
