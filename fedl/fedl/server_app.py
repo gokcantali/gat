@@ -30,7 +30,7 @@ def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
     return aggregated_metrics
 
 
-NUM_ROUNDS = 70
+NUM_ROUNDS = 60
 METHOD = "lin_reg"
 TRIAL = "fifteenth"
 
@@ -78,7 +78,7 @@ def server_fn(context: Context) -> ServerAppComponents:
     with open("carbon_emissions.txt", "a") as f:
         subheader = "\n====== "
         subheader += "WITHOUT OPTIMIZATION" if METHOD == 'non_cf' else "WITH OPTIMIZATION"
-        subheader += f" - {NUM_ROUNDS} Rounds - {METHOD} Algorithm - {TRIAL} TRIAL"
+        subheader += f" - {NUM_ROUNDS} Rounds - {CF_METHODS[METHOD]} Algorithm - {TRIAL} TRIAL"
         subheader += " - CLOUD ======\n"
         f.write(subheader)
 
