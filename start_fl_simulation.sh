@@ -5,7 +5,7 @@ sed -i.bak -E "s/TRIAL = \"(.+)\"/TRIAL = \"$3\"/g" ./fedl/fedl/server_app.py
 
 # start the FL simulation, assuming that
 # the superlink and the server-app are hosted on the same machine
-nohup poetry run flower-server-app fedl \
+poetry run flower-server-app fedl \
       --superlink 0.0.0.0:9091 \
       --insecure \
       > FL_$1_Rounds_$2_Algorithm_$3_Trial_Results.txt &
