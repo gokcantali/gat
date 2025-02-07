@@ -1,6 +1,6 @@
 import math
+from dataclasses import asdict
 from pathlib import Path
-# from codecarbon import track_emissions
 
 import os
 import torch
@@ -51,10 +51,16 @@ class FlowerClient(NumPyClient):
         )
         self.net.set_parameters(parameters, config, is_evaluate=False)
         tracker.start()
-        self.net.train_model(self.trainloader, self.valloader, batch_mode=True, epochs=1)
+        metrics = self.net.train_model(self.trainloader, self.valloader, batch_mode=True, epochs=1)
         emissions = tracker.stop()
         self.emissions = emissions if not math.isnan(emissions) else emissions
-        return self.net.get_parameters(), len(self.trainloader), {"carbon": emissions}
+        train_predictions, _, _ = self.net.test_model_batch_mode(self.trainloader)
+
+        return (
+            self.net.get_parameters(),
+            len(self.trainloader),
+            {**asdict(metrics), "carbon": emissions}
+        )
 
     def evaluate(self, parameters, config):
         self.net.set_parameters(parameters, config, is_evaluate=True)

@@ -1,13 +1,15 @@
 # Create FedAvg strategy
 from typing import List, Tuple
 
-from flwr.common import Context, Metrics, Parameters
+import mlflow
+from flwr.common import Context, Metrics, Parameters, Scalar, NDArray, NDArrays
 from flwr.server import ServerAppComponents, ServerConfig, ServerApp, start_server, Driver, LegacyContext, ClientManager
 from flwr.server.strategy import FedAvg, FedProx
 from flwr.server.workflow import SecAggPlusWorkflow, DefaultWorkflow
 
 from .custom_strategy import SimpleClientManagerWithPrioritizedSampling, FedAvgCF, CF_METHODS
 
+mlflow.set_tracking_uri("http://localhost:8080")
 
 def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
     aggregated_metrics = {}
@@ -32,17 +34,50 @@ def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
 
 NUM_ROUNDS = 60
 METHOD = "lin_reg"
-TRIAL = "fifteenth"
+TRIAL = "17th"
 
-def report_carbon_emissions(metrics: List[Tuple[int, Metrics]]) -> Metrics:
+EXPERIMENT_NAME = f"5Nodes-{NUM_ROUNDS}Rounds-{METHOD}-{TRIAL}Trial"
+mlflow.set_experiment(experiment_name=EXPERIMENT_NAME)
+
+current_training_round = 0
+
+def training_metrics_aggregation(metrics: List[Tuple[int, Metrics]]) -> Metrics:
+    global current_training_round
+    current_training_round += 1
+
     total_emission = 0.0
+    total_samples = 0
+    other_metrics_weighted_total = {}
+
     for num_examples, m in metrics:
         print(f"Client with {num_examples} samples emitted {m['carbon']} kgCO2")
         total_emission += m["carbon"]
+        for field in m:
+            if field != "carbon":
+                if field not in other_metrics_weighted_total:
+                    other_metrics_weighted_total[field] = 0.0
+                other_metrics_weighted_total[field] += num_examples * m[field]
+        total_samples += num_examples
+
     with open("carbon_emissions.txt", "a") as f:
         f.write(f"{total_emission}\n")
-    return {"total_emission": total_emission}
 
+    other_metrics_weighted_average = {
+        field: other_metrics_weighted_total[field] / total_samples
+        for field in other_metrics_weighted_total
+    }
+
+    return {"total_emission": total_emission, **other_metrics_weighted_average}
+
+
+def log_params_and_metrics_to_mlflow(
+    params: NDArrays, metrics: dict[str, Scalar]
+):
+    global EXPERIMENT_NAME, NUM_ROUNDS, current_training_round
+    with mlflow.start_run(run_name=EXPERIMENT_NAME):
+        mlflow.log_metrics(metrics, step=current_training_round)
+        if current_training_round == NUM_ROUNDS:
+            mlflow.log_param("nn", params)
 
 strategy = FedAvgCF(
     fraction_fit=0.6,  # Sample 60% of available clients for training
@@ -51,12 +86,13 @@ strategy = FedAvgCF(
     min_evaluate_clients=3,  # Never sample less than 3 clients for evaluation
     min_available_clients=3,  # Wait until all 3 clients are available
     evaluate_metrics_aggregation_fn=weighted_average,  # Use weighted average as custom metric evaluation function
-    fit_metrics_aggregation_fn=report_carbon_emissions,  # Use custom function to report carbon emissions
+    fit_metrics_aggregation_fn=training_metrics_aggregation,  # Use custom function to report carbon emissions
     alpha=0.5,
     window=5,
     method=METHOD,
     trial=TRIAL,
-    total_rounds=NUM_ROUNDS
+    total_rounds=NUM_ROUNDS,
+    log_params_and_metrics_fn=log_params_and_metrics_to_mlflow
 )
 
 # Configure the server for <NUM_ROUNDS> rounds of training

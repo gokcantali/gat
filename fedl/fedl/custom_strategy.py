@@ -108,7 +108,9 @@ class FedAvgCF(FedAvg):
     def __init__(
         self, alpha: float, window: int,
         method: str = "lin_reg", total_rounds: int = 60,
-        trial: str = "First", **kwargs
+        trial: str = "First",
+        log_params_and_metrics_fn: Optional[callable] = None,
+        **kwargs
     ):
         super().__init__(**kwargs)
         self.alpha = alpha
@@ -120,6 +122,7 @@ class FedAvgCF(FedAvg):
 
         self.total_rounds = total_rounds
         self.trial = trial
+        self.log_params_and_metrics_fn = log_params_and_metrics_fn
 
         self.emission_mapping: dict[str, dict[int, float]] = {}
 
@@ -208,11 +211,14 @@ class FedAvgCF(FedAvg):
             carbon_emission = fit_res.metrics.get("carbon", -1.0)
             self.emission_mapping[cid][server_round] = carbon_emission
 
-        # log(WARNING, f"Carbon Emissions: {self.emission_mapping}")
-
-        return super().aggregate_fit(
+        params_agg, metrics_agg = super().aggregate_fit(
             server_round=server_round, results=results, failures=failures
         )
+
+        if self.log_params_and_metrics_fn:
+            self.log_params_and_metrics_fn(params_agg, metrics_agg)
+
+        return params_agg, metrics_agg
 
     def _calculate_carbon_based_priorities(self):
         priorities = {}
