@@ -6,4 +6,4 @@ nohup poetry run flower-supernode fedl \
       --server $1:9092 \
       --insecure \
       --node-config "partition-id=$2" \
-      > nohup-supernode.out &
+      > nohup-supernode.out 2>&1 &

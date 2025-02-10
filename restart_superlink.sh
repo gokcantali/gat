@@ -4,4 +4,4 @@ kill -9 "$(ps aux | grep '[f]lower-superlink' | awk '{print $2}')"
 
 nohup poetry run flower-superlink \
       --insecure \
-      > nohup-superlink.out &
+      > nohup-superlink.out 2>&1 &
