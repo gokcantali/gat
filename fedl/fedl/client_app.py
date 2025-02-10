@@ -53,13 +53,18 @@ class FlowerClient(NumPyClient):
         tracker.start()
         metrics = self.net.train_model(self.trainloader, self.valloader, batch_mode=True, epochs=1)
         emissions = tracker.stop()
-        self.emissions = emissions if not math.isnan(emissions) else emissions
-        train_predictions, _, _ = self.net.test_model_batch_mode(self.trainloader)
+        # self.emissions = emissions if not math.isnan(emissions) else emissions
+
+        metrics_to_aggregate = {
+            "carbon": emissions
+        }
+        for metric, values in asdict(metrics).items():
+            metrics_to_aggregate[metric] = values[-1]
 
         return (
             self.net.get_parameters(),
             len(self.trainloader),
-            {**asdict(metrics), "carbon": emissions}
+            metrics_to_aggregate
         )
 
     def evaluate(self, parameters, config):

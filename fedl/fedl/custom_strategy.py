@@ -6,7 +6,7 @@ from typing import Optional, Union
 
 import numpy as np
 import pandas as pd
-from flwr.common import FitIns, Parameters, log, GetPropertiesIns, FitRes, Scalar
+from flwr.common import FitIns, Parameters, log, GetPropertiesIns, FitRes, Scalar, EvaluateRes, parameters_to_ndarrays
 from flwr.server import SimpleClientManager
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.criterion import Criterion
@@ -126,6 +126,21 @@ class FedAvgCF(FedAvg):
 
         self.emission_mapping: dict[str, dict[int, float]] = {}
 
+    def aggregate_evaluate(
+        self,
+        server_round: int,
+        results: list[tuple[ClientProxy, EvaluateRes]],
+        failures: list[Union[tuple[ClientProxy, EvaluateRes], BaseException]],
+    ) -> tuple[Optional[float], dict[str, Scalar]]:
+        loss_agg, metrics_agg = super().aggregate_evaluate(
+            server_round=server_round, results=results, failures=failures
+        )
+
+        if self.log_params_and_metrics_fn:
+            self.log_params_and_metrics_fn(None, metrics_agg)
+
+        return loss_agg, metrics_agg
+
     def configure_fit(
         self,
         server_round: int,
@@ -216,7 +231,9 @@ class FedAvgCF(FedAvg):
         )
 
         if self.log_params_and_metrics_fn:
-            self.log_params_and_metrics_fn(params_agg, metrics_agg)
+            self.log_params_and_metrics_fn(
+                parameters_to_ndarrays(params_agg), metrics_agg
+            )
 
         return params_agg, metrics_agg
 

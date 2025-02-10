@@ -1,12 +1,12 @@
 # Create FedAvg strategy
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 
 import mlflow
 from flwr.common import Context, Metrics, Parameters, Scalar, NDArray, NDArrays
 from flwr.server import ServerAppComponents, ServerConfig, ServerApp, start_server, Driver, LegacyContext, ClientManager
-from flwr.server.strategy import FedAvg, FedProx
 from flwr.server.workflow import SecAggPlusWorkflow, DefaultWorkflow
 
+from run import initialize_gcn_model
 from .custom_strategy import SimpleClientManagerWithPrioritizedSampling, FedAvgCF, CF_METHODS
 
 mlflow.set_tracking_uri("http://localhost:8080")
@@ -32,12 +32,20 @@ def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
     return aggregated_metrics
 
 
-NUM_ROUNDS = 60
-METHOD = "lin_reg"
-TRIAL = "17th"
+NUM_ROUNDS = 3
+METHOD = "simple_avg"
+TRIAL = "23th"
 
-EXPERIMENT_NAME = f"5Nodes-{NUM_ROUNDS}Rounds-{METHOD}-{TRIAL}Trial"
-mlflow.set_experiment(experiment_name=EXPERIMENT_NAME)
+EXPERIMENT_NAME = f"5Nodes-{NUM_ROUNDS}Rounds-{METHOD}"
+EXPERIMENT_ID = mlflow.set_experiment(
+    experiment_name=EXPERIMENT_NAME
+).experiment_id
+
+RUN_ID = mlflow.start_run(
+    experiment_id=EXPERIMENT_ID,
+    run_name=f"{TRIAL} Trial"
+).info.run_id
+mlflow.end_run()
 
 current_training_round = 0
 
@@ -71,13 +79,21 @@ def training_metrics_aggregation(metrics: List[Tuple[int, Metrics]]) -> Metrics:
 
 
 def log_params_and_metrics_to_mlflow(
-    params: NDArrays, metrics: dict[str, Scalar]
+    params: Optional[NDArrays] = None,
+    metrics: Optional[dict[str, Scalar]] = None
 ):
-    global EXPERIMENT_NAME, NUM_ROUNDS, current_training_round
-    with mlflow.start_run(run_name=EXPERIMENT_NAME):
-        mlflow.log_metrics(metrics, step=current_training_round)
-        if current_training_round == NUM_ROUNDS:
-            mlflow.log_param("nn", params)
+    global EXPERIMENT_NAME, RUN_ID, NUM_ROUNDS, TRIAL, current_training_round
+    with mlflow.start_run(run_id=RUN_ID):
+        if metrics:
+            mlflow.log_metrics(metrics, step=current_training_round)
+        if params and current_training_round == NUM_ROUNDS:
+            model = initialize_gcn_model(num_classes=4)
+            model.set_parameters(params, None, False)
+            mlflow.pytorch.log_model(
+                pytorch_model=model,
+                artifact_path=f"GNN-{EXPERIMENT_NAME}",
+                registered_model_name=f"GNN-{EXPERIMENT_NAME}-{TRIAL}Trial"
+            )
 
 strategy = FedAvgCF(
     fraction_fit=0.6,  # Sample 60% of available clients for training
