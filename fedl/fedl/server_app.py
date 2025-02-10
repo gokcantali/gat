@@ -78,15 +78,30 @@ def training_metrics_aggregation(metrics: List[Tuple[int, Metrics]]) -> Metrics:
     return {"total_emission": total_emission, **other_metrics_weighted_average}
 
 
-def log_params_and_metrics_to_mlflow(
+def log_model_params_and_metrics_to_mlflow(
     params: Optional[NDArrays] = None,
-    metrics: Optional[dict[str, Scalar]] = None
+    metrics_plus_hyperparams: Optional[dict[str, Scalar]] = None
 ):
     global EXPERIMENT_NAME, RUN_ID, NUM_ROUNDS, TRIAL, current_training_round
     with mlflow.start_run(run_id=RUN_ID):
-        if metrics:
+        if metrics_plus_hyperparams:
+            hyperparam_prefix = "hp:"
+
+            hyperparams = {}
+            metrics = {}
+            for metric, value in metrics_plus_hyperparams.items():
+                if metric.startswith(hyperparam_prefix):
+                    hyperparams[metric[len(hyperparam_prefix):]] = value
+                else:
+                    metrics[metric] = value
+
             mlflow.log_metrics(metrics, step=current_training_round)
+            if current_training_round == 1:
+                # log the hyperparams only once at the beginning
+                mlflow.log_params(hyperparams)
+
         if params and current_training_round == NUM_ROUNDS:
+            # log the model only once at the end
             model = initialize_gcn_model(num_classes=4)
             model.set_parameters(params, None, False)
             mlflow.pytorch.log_model(
@@ -108,7 +123,7 @@ strategy = FedAvgCF(
     method=METHOD,
     trial=TRIAL,
     total_rounds=NUM_ROUNDS,
-    log_params_and_metrics_fn=log_params_and_metrics_to_mlflow
+    log_params_and_metrics_fn=log_model_params_and_metrics_to_mlflow
 )
 
 # Configure the server for <NUM_ROUNDS> rounds of training

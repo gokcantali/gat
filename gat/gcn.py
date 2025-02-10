@@ -63,6 +63,14 @@ class GCN(torch.nn.Module):
         self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             self.optimizer, mode="min", factor=0.1, patience=self.patience
         )
+        self.hyperparams = {
+            "epochs": epochs,
+            "lr": lr,
+            "weight_decay": weight_decay,
+            "dropout": dropout,
+            "hidden_dim": hidden_dim,
+            "patience": patience,
+        }
 
     def forward(self, x, edge_index):
         #x = self.dropout(x)

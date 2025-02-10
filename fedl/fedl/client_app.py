@@ -61,6 +61,12 @@ class FlowerClient(NumPyClient):
         for metric, values in asdict(metrics).items():
             metrics_to_aggregate[metric] = values[-1]
 
+        # Include hyperparameters in the metrics to aggregate
+        metrics_to_aggregate["learning_rate"] = self.net.scheduler.get_last_lr()[0]
+        for initial_hp, hp_value in self.net.hyperparams.items():
+            metrics_to_aggregate[f"hp:{initial_hp}"] = hp_value
+        metrics_to_aggregate["hp:epochs"] = 1
+
         return (
             self.net.get_parameters(),
             len(self.trainloader),
