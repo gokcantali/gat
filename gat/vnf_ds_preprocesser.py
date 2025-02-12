@@ -16,10 +16,12 @@ def enumerate_attack_classes(x):
         return 0
     elif 'dns spoof' in x.lower():
         return 1
-    elif 'scan' in x.lower():
+    elif 'dns amp' in x.lower():
         return 2
-    else:
+    elif 'scan' in x.lower():
         return 3
+    else:
+        return 4
 
 
 def diversity_index(series):
@@ -59,6 +61,7 @@ def construct_port_scan_label(df, use_diversity_index=True):
     return df
 
 def preprocess_df(df, use_diversity_index=True):
+    df = df.fillna(0)
     df["timestamp"] = (0.5 * df["start_time"] + 0.5 * df["stop_time"]).astype(int)
     df = construct_port_scan_label(df, use_diversity_index=use_diversity_index)
     return preprocess_X(df), preprocess_y(df)
