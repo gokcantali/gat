@@ -14,14 +14,20 @@ from gat.load_data import load_data
 def enumerate_attack_classes(x):
     if x.lower() == 'benign':
         return 0
-    elif 'dns spoof' in x.lower():
-        return 1
     elif 'dns amp' in x.lower():
+        return 1
+    elif 'dns exf' in x.lower():
         return 2
-    elif 'scan' in x.lower():
+    elif 'dns spoof' in x.lower():
         return 3
-    else:
+    elif 'malware' in x.lower():
         return 4
+    elif 'scan' in x.lower():
+        return 5
+    elif 'udp flood' in x.lower():
+        return 6
+    else:
+        return 7
 
 
 def diversity_index(series):
@@ -61,7 +67,11 @@ def construct_port_scan_label(df, use_diversity_index=True):
     return df
 
 def preprocess_df(df, use_diversity_index=True):
-    df = df.fillna(0)
+    df = df[(df.start_time.notna()) & (df.start_time != '')]
+    df = df[(df.stop_time.notna()) & (df.stop_time != '')]
+    df = df[(df.source_ip.notna()) & (df.source_ip != '')]
+    df = df[(df.destination_ip.notna()) & (df.destination_ip != '')]
+    df = df.fillna('')
     df["timestamp"] = (0.5 * df["start_time"] + 0.5 * df["stop_time"]).astype(int)
     df = construct_port_scan_label(df, use_diversity_index=use_diversity_index)
     return preprocess_X(df), preprocess_y(df)

@@ -169,11 +169,12 @@ def train_svm_with_k_fold_cv(X_train_val, y_train_val, is_verbose=True):
 if __name__ == '__main__':
     #RANDOM_STATE = 42
 
-    df1 = load_data(Path("data/sessions_9_vDNS.csv"))
-    df2 = load_data(Path("data/sessions_8_vDNS.csv"))
-    df3 = load_data(Path("data/sessions_7_vDNS.csv"))
-    df4 = load_data(Path("data/sessions_5_vDNS.csv"))
-    df = pd.concat([df1, df2, df3, df4], ignore_index=True)
+    dataset_indices = [1, 2, 3, 5, 6, 7, 8, 9]#, 5, 6, 7, 8, 9]
+    df = pd.DataFrame()
+    for ds_index in dataset_indices:
+        ds_df = load_data(Path(f"data/sessions_{ds_index}_vDNS.csv"))
+        df = pd.concat([df, ds_df], ignore_index=True)
+
     print(df.groupby(['label']).size())
     X, y = preprocess_df(df, use_diversity_index=True)
 
