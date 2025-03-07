@@ -16,4 +16,6 @@ echo "SOURCE_DATASET=worker$1-traces-75min.csv" > .env
 
 export AIRFLOW_HOME="$(pwd)"
 
+echo "export AIRFLOW_HOME=/home/ubuntu/gat" >> ~/.bashrc
+
 nohup poetry run airflow standalone > nohup-airflow.txt 2>&1 &
