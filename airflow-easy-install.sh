@@ -1,5 +1,5 @@
 # For non-Linux systems, disable the following command
-sudo apt install python3-dev python3.11-dev \
+sudo apt install -y python3-dev python3.11-dev \
   build-essential libssl-dev libffi-dev \
   libxml2-dev libxslt1-dev zlib1g-dev
 
