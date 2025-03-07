@@ -38,3 +38,7 @@ best_model_FL.pt
 best_model_FL_*
 mlruns/
 mlartifacts/
+
+logs/
+airflow.db
+unittest.cfg
