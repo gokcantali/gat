@@ -43,14 +43,15 @@ with DAG(
     description="One-task DAG for sampling dataset",
     schedule="*/3 * * * *",
     start_date=datetime(2025, 3, 7, 0, 0),
-    end_date=datetime(2025, 3, 7, 14, 0),
+    end_date=datetime(2025, 3, 8, 0, 0),
     catchup=False,
     tags=["example"],
     params={
         "dataset_file_name": os.environ.get(
-            "DATASET_FILE_NAME", "sampled-traces-3ddos-2zap-1scan.csv"
+            "SOURCE_DATASET", "sampled-traces-3ddos-2zap-1scan.csv"
         ),
-    }
+    },
+    is_paused_upon_creation=False
 ) as dag:
 
     t1 = PythonOperator(
