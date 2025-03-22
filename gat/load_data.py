@@ -2,8 +2,11 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from sklearn.model_selection import train_test_split
 from torch import save, load
 from torch_geometric.data import Data
+
+from constants import TEST_SIZE
 
 PROJECT_ROOT = Path(__file__).parent.parent
 
@@ -56,10 +59,15 @@ def create_subset_from_dataset_using_monte_carlo(file_name: str):
     file_name += f"benign{benign_ratio:.2f}-"
     file_name += f"dos{dos_ratio:.2f}-"
     file_name += f"port{port_scan_ratio:.2f}-"
-    file_name += f"zap{zap_scan_ratio:.2f}.csv"
+    file_name += f"zap{zap_scan_ratio:.2f}"
 
-    # Save the subset to a new file
-    df_subset.to_csv(f"{PROJECT_ROOT}/data/subsample/{file_name}", index=False)
+    # Save the training and testing subsets to a new file
+    train_file_name = file_name + "-train.csv"
+    test_file_name = file_name + "-test.csv"
+
+    df_subset_train, df_subset_test = train_test_split(df_subset, test_size=TEST_SIZE)
+    df_subset_train.to_csv(f"{PROJECT_ROOT}/data/subsample/{train_file_name}", index=False)
+    df_subset_test.to_csv(f"{PROJECT_ROOT}/data/subsample/{test_file_name}", index=False)
 
     return df_subset
 
