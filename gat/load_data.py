@@ -19,8 +19,15 @@ def load_data(file_path: Path = Path("data/sampled-traces-3ddos-2zap-1scan.csv")
     return df
 
 
-def save_graph_data(data: Data, name = 'traces-3ddos-2zap-1scan.pt'):
-    file_path = Path(f"data/graph/{name}")
+def save_graph_data(data: Data, name: str = None, path: str = None):
+    if name is None and path is None:
+        raise Exception("Need to specify either name or path of the graph file")
+
+    if path is not None:
+        file_path = Path(path)
+    else:
+        file_path = Path(f"data/graph/{name}")
+
     save(data, file_path)
 
 
