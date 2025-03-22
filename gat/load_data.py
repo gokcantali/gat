@@ -6,7 +6,7 @@ from sklearn.model_selection import train_test_split
 from torch import save, load
 from torch_geometric.data import Data
 
-from constants import TEST_SIZE
+from .constants import TEST_SIZE
 
 PROJECT_ROOT = Path(__file__).parent.parent
 

@@ -42,7 +42,7 @@ with DAG(
         # 'trigger_rule': 'all_success',
     },
     description="One-task DAG for sampling dataset",
-    schedule="5 * * * *",
+    schedule="7 * * * *",
     start_date=datetime(2025, 3, 7, 0, 0),
     end_date=datetime(2025, 3, 23, 4, 0),
     catchup=False,
