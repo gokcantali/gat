@@ -163,3 +163,4 @@ def create_one_graph_from_the_first_existing_dataset_subsample():
             dataset_file_path=Path(f"{PROJECT_ROOT}/data/subsample/{ds_file_name}"),
         )
         save_graph_data(graph, path=f"{PROJECT_ROOT}/data/subsample/graph/{graph_file_name}")
+        break
