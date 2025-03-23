@@ -41,10 +41,10 @@ with DAG(
         # 'on_skipped_callback': another_function, #or list of functions
         # 'trigger_rule': 'all_success',
     },
-    description="One-task DAG for sampling dataset",
-    schedule="7 * * * *",
+    description="Random sub-sampling a dataset and creating the graph of the subset",
+    schedule="*/30 * * * *",
     start_date=datetime(2025, 3, 7, 0, 0),
-    end_date=datetime(2025, 3, 23, 4, 0),
+    end_date=datetime(2025, 3, 23, 18, 0),
     catchup=False,
     tags=["example"],
     params={
