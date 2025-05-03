@@ -4,6 +4,8 @@ import json
 
 import numpy as np
 
+""" The following functions are used to parse the confusion matrix files
+    which are generated for the FL vs per-node experiments """
 
 def parse_file_with_confusion_matrices(f_name: str):
     file_content = open(f_name, "r").read()
@@ -177,6 +179,94 @@ def print_agg_performance_metrics_into_file(agg_perf_metrics: dict, f_name: str)
             file.write("\n")
 
 
+""" The following functions are used to parse the performance metrics from files
+    which are generated from the FL carbon emissions experiments """
+def parse_file_from_flower_output(f_name: str):
+    content = open(f"./results/FL-carbon-experiments/{f_name}", "r").read().split("[SUMMARY]\n")[1]
+    content = content.replace("\x1b[92mINFO \x1b[0m:", "")
+    content = content.replace("      ", "")
+    content = content.replace("\t", "")
+
+    metrics = {
+        "loss": [], "total_emission": [],
+        "accuracy": [], "precision": [], "f1_score": [], "recall": [],
+    }
+    running_time = 0.0
+
+    lines = content.split("\n")
+    current_metric = None
+    for line in lines:
+        if line.lower().startswith("run finished"):
+            running_time = re.search("(\d+\.\d+)s", line)[1]
+        else:
+            for metric in metrics:
+                if metric in line.lower():
+                    current_metric = metric
+                    break
+
+        if (match := re.search("round \d+: (\d+\.\d+(e-\d+)?)", line)) is not None:
+            value = match[1]
+            metrics[current_metric].append(value)
+        elif (match := re.search("\(\d+, (\d+\.\d+(e-\d+)?)", line)) is not None:
+            value = match[1]
+            metrics[current_metric].append(value)
+
+    return {
+        "metrics": metrics,
+        "running_time": running_time,
+    }
+
+
+def parse_and_aggregate_all_carbon_emission_results(rounds: int = 60, trials: int = 20):
+    METHODS = ["non_cf", "simple_avg", "exp_smooth", "lin_reg"]
+    metrics_by_method = {}
+    running_time_by_method = {}
+
+    for method in METHODS:
+        for trial in range(1, trials+1):
+            trial_text = trial if trial > 9 else f"0{trial}"
+            file_name = f"FL_{rounds}_Rounds_{method}_Algorithm_Trial_{trial_text}_Results.txt"
+            parsed_metrics = parse_file_from_flower_output(file_name)
+
+            if method not in metrics_by_method:
+                metrics_by_method[method] = {
+                    "loss": {}, "total_emission": {},
+                    "accuracy": {}, "precision": {}, "f1_score": {}, "recall": {},
+                }
+
+            for metric in metrics_by_method[method]:
+                if metric not in parsed_metrics["metrics"]:
+                    continue
+
+                for ind, value in enumerate(parsed_metrics["metrics"][metric]):
+                    round = ind + 1
+                    round_key = f"round-{round}"
+                    if round_key not in metrics_by_method[method][metric]:
+                        metrics_by_method[method][metric][round_key] = {"values": [], "mean": 0.0, "std": 0.0}
+                    metrics_by_method[method][metric][round_key]["values"].append(float(value))
+
+            if method not in running_time_by_method:
+                running_time_by_method[method] = {"values": [], "mean": 0.0, "std": 0.0}
+            running_time_by_method[method]["values"].append(float(parsed_metrics["running_time"]))
+
+        # calculates the summary statistics for each method and round
+        for metric in metrics_by_method[method]:
+            for round_key in metrics_by_method[method][metric]:
+                values = metrics_by_method[method][metric][round_key]["values"]
+                mean_value = np.mean(values)
+                std_value = np.std(values)
+                metrics_by_method[method][metric][round_key]["mean"] = mean_value
+                metrics_by_method[method][metric][round_key]["std"] = std_value
+
+        running_time_by_method[method]["mean"] = np.mean(running_time_by_method[method]["values"])
+        running_time_by_method[method]["std"] = np.std(running_time_by_method[method]["values"])
+
+    return {
+        "metrics": metrics_by_method,
+        "running_time": running_time_by_method,
+    }
+
+
 if __name__ == "__main__":
     # input_file_name = "experiment/train-worker0-test-worker0-FL-60-CF-ExpSmooth.txt"
     # conf_matrices = parse_file_with_confusion_matrices(input_file_name)
@@ -196,31 +286,38 @@ if __name__ == "__main__":
     # print_agg_performance_metrics_into_file(
     #     average_performance_metrics, output_file_name
     # )
-    suffixes = [
-        "", "-FL-60-CF", "-FL-60-CF-ExpSmooth",
-        "-FL-60-CF-LinRegress", "-FL-60-NON-CF"
-    ]
 
-    for train_ind in range(0, 5):
-        for test_ind in range(0, 5):
-            for suffix in suffixes:
-                input_file_name = (
-                    "results_phase2/experiment/" +
-                    f"train-worker{train_ind}-" +
-                    f"test-worker{test_ind}" +
-                    f"{suffix}.txt"
-                )
-                output_file_name = (
-                    "results_phase2/summary/" +
-                    f"summary-train-worker{train_ind}-" +
-                    f"test-worker{test_ind}" +
-                    f"{suffix}.txt"
-                )
+    # suffixes = [
+    #     "", "-FL-60-CF", "-FL-60-CF-ExpSmooth",
+    #     "-FL-60-CF-LinRegress", "-FL-60-NON-CF"
+    # ]
+    #
+    # for train_ind in range(0, 5):
+    #     for test_ind in range(0, 5):
+    #         for suffix in suffixes:
+    #             input_file_name = (
+    #                 "results_phase2/experiment/" +
+    #                 f"train-worker{train_ind}-" +
+    #                 f"test-worker{test_ind}" +
+    #                 f"{suffix}.txt"
+    #             )
+    #             output_file_name = (
+    #                 "results_phase2/summary/" +
+    #                 f"summary-train-worker{train_ind}-" +
+    #                 f"test-worker{test_ind}" +
+    #                 f"{suffix}.txt"
+    #             )
+    #
+    #             conf_matrices = parse_file_with_confusion_matrices(input_file_name)
+    #             perf_metrics = [
+    #                 parse_single_confusion_matrix_and_obtain_metrics(c_matrix)
+    #                 for c_matrix in conf_matrices
+    #             ]
+    #             aggregated_perf_metrics = get_aggregated_metrics_across_experiments(perf_metrics)
+    #             print_agg_performance_metrics_into_file(aggregated_perf_metrics, output_file_name)
 
-                conf_matrices = parse_file_with_confusion_matrices(input_file_name)
-                perf_metrics = [
-                    parse_single_confusion_matrix_and_obtain_metrics(c_matrix)
-                    for c_matrix in conf_matrices
-                ]
-                aggregated_perf_metrics = get_aggregated_metrics_across_experiments(perf_metrics)
-                print_agg_performance_metrics_into_file(aggregated_perf_metrics, output_file_name)
+    results = parse_and_aggregate_all_carbon_emission_results(
+        rounds=60,
+        trials=20
+    )
+    print(results)
