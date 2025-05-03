@@ -11,6 +11,7 @@ from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
 from dotenv import load_dotenv
 
+from gat.converter import create_one_graph_from_the_first_existing_dataset_subsample
 from gat.load_data import create_subset_from_dataset_using_monte_carlo
 
 load_dotenv()
@@ -40,10 +41,10 @@ with DAG(
         # 'on_skipped_callback': another_function, #or list of functions
         # 'trigger_rule': 'all_success',
     },
-    description="One-task DAG for sampling dataset",
-    schedule="*/3 * * * *",
+    description="Random sub-sampling a dataset and creating the graph of the subset",
+    schedule="*/30 * * * *",
     start_date=datetime(2025, 3, 7, 0, 0),
-    end_date=datetime(2025, 3, 8, 0, 0),
+    end_date=datetime(2025, 3, 23, 18, 0),
     catchup=False,
     tags=["example"],
     params={
@@ -62,3 +63,11 @@ with DAG(
             "{{ params.dataset_file_name }}",
         ]
     )
+
+    t2 = PythonOperator(
+        task_id="graph_construction",
+        depends_on_past=False,
+        python_callable=create_one_graph_from_the_first_existing_dataset_subsample,
+    )
+
+    t1 >> t2

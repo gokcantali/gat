@@ -2,8 +2,11 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from sklearn.model_selection import train_test_split
 from torch import save, load
 from torch_geometric.data import Data
+
+from .constants import TEST_SIZE
 
 PROJECT_ROOT = Path(__file__).parent.parent
 
@@ -16,8 +19,15 @@ def load_data(file_path: Path = Path("data/sampled-traces-3ddos-2zap-1scan.csv")
     return df
 
 
-def save_graph_data(data: Data, name = 'traces-3ddos-2zap-1scan.pt'):
-    file_path = Path(f"data/graph/{name}")
+def save_graph_data(data: Data, name: str = None, path: str = None):
+    if name is None and path is None:
+        raise Exception("Need to specify either name or path of the graph file")
+
+    if path is not None:
+        file_path = Path(path)
+    else:
+        file_path = Path(f"data/graph/{name}")
+
     save(data, file_path)
 
 
@@ -56,10 +66,15 @@ def create_subset_from_dataset_using_monte_carlo(file_name: str):
     file_name += f"benign{benign_ratio:.2f}-"
     file_name += f"dos{dos_ratio:.2f}-"
     file_name += f"port{port_scan_ratio:.2f}-"
-    file_name += f"zap{zap_scan_ratio:.2f}.csv"
+    file_name += f"zap{zap_scan_ratio:.2f}"
 
-    # Save the subset to a new file
-    df_subset.to_csv(f"{PROJECT_ROOT}/data/subsample/{file_name}", index=False)
+    # Save the training and testing subsets to a new file
+    train_file_name = file_name + "-train.csv"
+    test_file_name = file_name + "-test.csv"
+
+    df_subset_train, df_subset_test = train_test_split(df_subset, test_size=TEST_SIZE)
+    df_subset_train.to_csv(f"{PROJECT_ROOT}/data/subsample/{train_file_name}", index=False)
+    df_subset_test.to_csv(f"{PROJECT_ROOT}/data/subsample/{test_file_name}", index=False)
 
     return df_subset
 
