@@ -1,6 +1,8 @@
 ﻿import multiprocessing as mp
 
+import numpy as np
 import pandas as pd
+from scipy import stats
 
 from gat.encoder import (
     boolean_string_to_int,
@@ -53,7 +55,7 @@ def preprocess_df(use_diversity_index=True):
     df["is_anomaly"] = df["is_anomaly"].replace({"True": 1, "False": 0}).astype(int)
     return df
 
-def preprocess_X(df, use_diversity_index=True):
+def preprocess_X(df, use_diversity_index=True, keep_timestamp=False):
     X = df.drop(columns=["is_anomaly", "anomaly_class"])
     #X["timestamp"] = pd.to_datetime(X["timestamp"], utc=True)
     #X.sort_values(by=["ip_source", "timestamp"], inplace=True)
@@ -88,9 +90,45 @@ def preprocess_X(df, use_diversity_index=True):
                 "source_port_label_normalized", "destination_port_label_normalized"]
     if use_diversity_index:
         features.append("diversity_index")
+    if keep_timestamp:
+        features.append("timestamp")
     X = X[features]
     return X
 
 
 def preprocess_y(df):
     return df["anomaly_class"]
+
+
+##### SEQUENCES FOR RNN #####
+
+def process_timestamps(df):
+    # Convert timestamp to datetime if it isn't already
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
+
+    # Extract useful temporal features
+    df['hour'] = df['timestamp'].dt.hour
+    df['day_of_week'] = df['timestamp'].dt.dayofweek
+    df['seconds_since_epoch'] = (df['timestamp'] - pd.Timestamp("1970-01-01")) // pd.Timedelta('1s')
+
+    # Drop original timestamp
+    df.drop('timestamp', axis=1, inplace=True)
+    return df
+
+
+def create_sequences(data, seq_length):
+    sequences = []
+    sequence_labels = []
+    data_size = len(data) - (len(data) % seq_length)
+
+    data_labels = data['label'].values
+    data = data.drop(columns=['label'])
+
+    for i in range(0, data_size, seq_length):
+        # label = data_labels[i + seq_length - 1]  # Using last packet's label
+        label = stats.mode(data_labels[i:i + seq_length])[0]  # Using mode of the sequence
+        seq = data.iloc[i:i + seq_length, :].values
+        sequences.append(seq)
+        sequence_labels.append(label)
+
+    return np.array(sequences), np.array(sequence_labels)
