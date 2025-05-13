@@ -116,7 +116,7 @@ def process_timestamps(df):
     return df
 
 
-def create_sequences(data, seq_length):
+def create_sequences(data: pd.DataFrame, seq_length: int):
     sequences = []
     sequence_labels = []
     data_size = len(data) - (len(data) % seq_length)
@@ -126,9 +126,61 @@ def create_sequences(data, seq_length):
 
     for i in range(0, data_size, seq_length):
         # label = data_labels[i + seq_length - 1]  # Using last packet's label
-        label = stats.mode(data_labels[i:i + seq_length])[0]  # Using mode of the sequence
+        label = np.max(data_labels[i:i + seq_length])  # Using max of the sequence
         seq = data.iloc[i:i + seq_length, :].values
         sequences.append(seq)
         sequence_labels.append(label)
+
+    return np.array(sequences), np.array(sequence_labels)
+
+
+def create_sequences_based_on_session(data: pd.DataFrame):
+    sequences = []
+    sequence_labels = []
+
+    data_labels = data['label'].values
+    data = data.drop(columns=['label'])
+    data["session_id"] = 0
+
+    #session_id = 1
+    item_index = 0
+    session_sequence_items = []
+    current_session_label_counts = {val: 0 for val in np.unique(data_labels)}
+    current_session_name = ""  # in the form of "<source_ip>:<source_port>-<target_ip>:<target_port>"
+    for row in data.itertuples(index=False):
+        # create the source section of the session
+        source_ip = ""
+        for i in range(1, 9):
+            source_ip += str(getattr(row, f"ip_source_part{i}")) + "."
+        source_ip = source_ip[:-1]  # exclude the last dot
+        source_port = str(getattr(row, "source_port_label_normalized"))
+
+        # create the destination section of the session
+        destination_ip = ""
+        for i in range(1, 9):
+            destination_ip += str(getattr(row, f"ip_destination_part{i}")) + "."
+        destination_ip = destination_ip[:-1] # exclude the last dot
+        destination_port = str(getattr(row, "destination_port_label_normalized"))
+
+        session_name_for_the_item = f"{source_ip}:{source_port}-{destination_ip}:{destination_port}"
+        if current_session_name == "":
+            # set the session name for the first session
+            current_session_name = session_name_for_the_item
+
+        if session_name_for_the_item != current_session_name:
+            # a new session starts, record the previous session
+            session_label = max(current_session_label_counts, key=current_session_label_counts.get)
+            sequences.append(session_sequence_items[:])
+            sequence_labels.append(session_label)
+
+            # cleanup for the next session
+            session_sequence_items = []
+            #session_id += 1
+            current_session_label_counts = {val: 0 for val in np.unique(data_labels)}
+
+        #data[item_index]["session_id"] = session_id
+        session_sequence_items.append(row)
+        current_session_label_counts[data_labels[item_index]] += 1
+        item_index += 1
 
     return np.array(sequences), np.array(sequence_labels)
