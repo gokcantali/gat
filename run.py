@@ -4,7 +4,8 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from sklearn.metrics import confusion_matrix
+from matplotlib import pyplot as plt
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 from sklearn.model_selection import train_test_split
 from torch_geometric.loader import DataLoader, RandomNodeLoader
 
@@ -34,7 +35,7 @@ class Config:
     optimizer = torch.optim.AdamW
     lr = 0.03524
     weight_decay = 0.00048463407384332236
-    epochs = 29
+    epochs = 150
     patience = 7
     hidden_dim = 38
     dropout = 0.4416
@@ -134,11 +135,15 @@ def create_stratified_knn_graphs(file_name):
 
 def run_with_different_training_and_test_graphs(
     train_graph, test_graph,
-    use_pretrained_model=False, fl_rounds=20
+    pretrained_model=None, fl_rounds=20,
+    print_to_file=True
 ):
-    num_parts = 50
+    num_parts = 10
 
-    test_graph_data = load_graph_data(test_graph)
+    folder_name_test = '/'.join(test_graph.split('/')[:-1]) or None
+    file_name_test = test_graph.split('/')[-1]
+    test_graph_data = load_graph_data(name=file_name_test, folder=folder_name_test)
+
     test_graph_data.x[:, 18] = torch.zeros_like(test_graph_data.x[:, 18])
     test_graph_data.x[:, 19] = torch.zeros_like(test_graph_data.x[:, 19])
 
@@ -150,11 +155,14 @@ def run_with_different_training_and_test_graphs(
         y_true += batch.y
 
     gcn_model = initialize_gcn_model(4, 25)
-    if use_pretrained_model is True:
-        gcn_model.load_state_dict(torch.load(f'best_model_FL_{fl_rounds}.pt'))
+    if pretrained_model is not None:
+        gcn_model.load_state_dict(torch.load(pretrained_model))
 
     else:
-        train_graph_data = load_graph_data(train_graph)
+        folder_name_train = '/'.join(train_graph.split('/')[:-1]) or None
+        file_name_train = train_graph.split('/')[-1]
+        train_graph_data = load_graph_data(name=file_name_train, folder=folder_name_train)
+
         train_graph_data.x[:, 18] = torch.zeros_like(train_graph_data.x[:, 18])
         train_graph_data.x[:, 19] = torch.zeros_like(train_graph_data.x[:, 19])
 
@@ -176,22 +184,25 @@ def run_with_different_training_and_test_graphs(
         print("=======TRAINING COMPLETED!=======\n")
 
     start_time = time.time()
-    y_pred, _, _ = gcn_model.test_model_batch_mode(test_data)
+    y_pred, _, _, _ = gcn_model.test_model_batch_mode(test_data)
     end_time = time.time()
     print(f"Total Testing Time: {end_time - start_time}")
+    print(f"Training File: {train_graph}")
+    print(f"Test File: {test_graph}")
     print("=====TEST RESULTS=======")
     print(confusion_matrix(y_true, y_pred))
-    # return confusion_matrix(y_true, y_pred)
 
-    experiment_result_file_name = f"train-{train_graph.split('-')[0]}"
-    experiment_result_file_name += f"-test-{test_graph.split('-')[0]}"
-    if use_pretrained_model is True:
-        experiment_result_file_name += f"-FL-{fl_rounds}"
-    experiment_result_file_name += ".txt"
+    if print_to_file is True:
+        experiment_result_file_name = f"train-{train_graph.split('-')[0]}"
+        experiment_result_file_name += f"-test-{test_graph.split('-')[0]}"
+        if pretrained_model is not None:
+            experiment_result_file_name += f"-FL-{fl_rounds}"
+        experiment_result_file_name += ".txt"
 
-    with open(experiment_result_file_name, 'a') as file:
-        file.write(str(confusion_matrix(y_true, y_pred)) + '\n')
+        with open(experiment_result_file_name, 'a') as file:
+            file.write(str(confusion_matrix(y_true, y_pred)) + '\n')
 
+    return confusion_matrix(y_true, y_pred)
 
 def run(config=None, mode='train'):
     if not os.path.exists("./results"):
@@ -296,7 +307,7 @@ def run(config=None, mode='train'):
         #     return training_metrics
 
         start_time = time.time()
-        y_pred, _, _ = gcn_model.test_model_batch_mode(test_data)
+        y_pred, _, _, _ = gcn_model.test_model_batch_mode(test_data)
         end_time = time.time()
         print(f"Total Testing Time: {end_time - start_time}")
         print("=====TEST RESULTS=======")
@@ -315,14 +326,58 @@ if __name__ == "__main__":
     #     use_pretrained_model=True
     # )
 
-    TRIALS = 10
-    TRAIN_WORKER_IND = 0
-    for use_pretrained_model in [False, True]:
-        for test_worker_ind in range(5):
-            for _ in range(TRIALS):
-                run_with_different_training_and_test_graphs(
-                    train_graph=f"worker{TRAIN_WORKER_IND}-traces-75min-train.pt",
-                    test_graph=f"worker{test_worker_ind}-traces-75min-test.pt",
-                    use_pretrained_model=use_pretrained_model,
-                    fl_rounds=50
-                )
+    # FL vs Non-FL Scenario for FL-GATAKU
+    # TRIALS = 10
+    # TRAIN_WORKER_IND = 0
+    # for use_pretrained_model in [False, True]:
+    #     for test_worker_ind in range(5):
+    #         for _ in range(TRIALS):
+    #             run_with_different_training_and_test_graphs(
+    #                 train_graph=f"worker{TRAIN_WORKER_IND}-traces-75min-train.pt",
+    #                 test_graph=f"worker{test_worker_ind}-traces-75min-test.pt",
+    #                 use_pretrained_model=use_pretrained_model,
+    #                 fl_rounds=50
+    #             )
+    fig, axes = plt.subplots(nrows=3, ncols=2, figsize=(25, 15))
+
+    CLASS_NAMES = ["Benign", "DoS", "Port Scan", "Zap Scan"]
+    TRAIN_GRAPHS = [
+        "traces-dos-majority-train.pt",
+        "traces-port-majority-train.pt",
+        "traces-zap-majority-train.pt",
+        "traces-benign-majority-train.pt",
+        "traces-attack-majority-train.pt",
+    ]
+    TEST_GRAPH = "traces-test.pt"
+    index = 0
+    for index, train_graph in enumerate(TRAIN_GRAPHS):
+        ax = axes.flatten()[index]
+        cm = run_with_different_training_and_test_graphs(
+            train_graph=f"data/subsample/graph/{train_graph}",
+            test_graph=f"data/subsample/graph/{TEST_GRAPH}",
+            pretrained_model=None,
+            print_to_file=False,
+        )
+        cm_normalized = cm / cm.astype(np.float64).sum(axis=1)[:,None]
+        cm_display = ConfusionMatrixDisplay(
+            confusion_matrix=cm_normalized, display_labels=CLASS_NAMES
+        )
+        cm_display.plot(ax=ax)
+        ax.title.set_text(f"Worker #{index}")
+        index += 1
+
+    ax = axes.flatten()[index]
+    cm = run_with_different_training_and_test_graphs(
+        train_graph=None,
+        test_graph=f"data/subsample/graph/{TEST_GRAPH}",
+        pretrained_model="FL-latest-model.pt",
+        print_to_file=False,
+    )
+    cm_normalized = cm / cm.astype(np.float64).sum(axis=1)[:,None]
+    cm_display = ConfusionMatrixDisplay(
+        confusion_matrix=cm_normalized, display_labels=CLASS_NAMES
+    )
+    cm_display.plot(ax=ax)
+    ax.title.set_text("Federated Learning")
+
+    plt.savefig("results/NATWORK-Demo/confusion_matrix.png")

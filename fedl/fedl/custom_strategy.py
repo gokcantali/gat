@@ -184,7 +184,7 @@ class FedAvgCF(FedAvg):
             elif self.method == "simple_avg":
                 priorities = self._calculate_carbon_based_priorities()
             else:  # NON_CF
-                log(WARNING, f"Carbon Reduction disabled! Fallback to standard sampling...")
+                #log(WARNING, f"Carbon Reduction disabled! Fallback to standard sampling...")
                 priorities = {}
 
             # if priorities are empty, fallback to standard sampling

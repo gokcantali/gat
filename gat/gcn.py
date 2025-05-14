@@ -293,7 +293,7 @@ class GCN(torch.nn.Module):
             "recall": recall_score(labels, predictions, average="weighted", zero_division=1),
             "f1_score": f1_score(labels, predictions, average="weighted", zero_division=1),
         }
-        return predictions, mean(losses), perf_metrics
+        return predictions, mean(losses), perf_metrics, labels
 
     def set_parameters(self, parameters: List[np.ndarray], config, is_evaluate=False):
         if config is None:
@@ -306,6 +306,8 @@ class GCN(torch.nn.Module):
 
         if is_evaluate is False:
             torch.save(state_dict, model_file_name)
+        else:
+            torch.save(state_dict, "FL-latest-model.pt")
 
     def get_parameters(self) -> List[np.ndarray]:
         return [val.cpu().numpy() for _, val in self.state_dict().items()]

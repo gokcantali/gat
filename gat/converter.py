@@ -142,12 +142,12 @@ def create_graph_from_dataset(dataset_file_path: Path):
     df["is_anomaly"] = df["is_anomaly"].replace({"True": 1, "False": 0}).astype(int)
     graph = convert_to_graph(
         X=preprocess_X(df, use_diversity_index=True),
-        y=df['is_anomaly'].replace({"True": 1, "False": 0}).astype(int)
+        y=df['anomaly_class'].astype(int)
     )
     return graph
 
 
-def create_one_graph_from_the_first_existing_dataset_subsample():
+def create_one_graph_from_the_first_existing_dataset_subsample(target_dataset_list=None):
     dataset_subsample_list = os.listdir(f"{PROJECT_ROOT}/data/subsample")
     dataset_graph_list = os.listdir(f"{PROJECT_ROOT}/data/subsample/graph")
 
@@ -155,12 +155,30 @@ def create_one_graph_from_the_first_existing_dataset_subsample():
         if not ds_file_name.endswith(".csv"):
             continue
 
+        if target_dataset_list is not None and ds_file_name not in target_dataset_list:
+            # skip if the file is not in the target list
+            continue
+
         graph_file_name = ds_file_name.replace(".csv", ".pt")
         if graph_file_name in dataset_graph_list:
+            # skip if the graph file already exists
             continue
 
         graph = create_graph_from_dataset(
             dataset_file_path=Path(f"{PROJECT_ROOT}/data/subsample/{ds_file_name}"),
         )
         save_graph_data(graph, path=f"{PROJECT_ROOT}/data/subsample/graph/{graph_file_name}")
-        break
+        # break
+
+if __name__ == "__main__":
+    target_dataset_list = [
+        "traces-dos-majority-train.csv",
+        "traces-port-majority-train.csv",
+        "traces-zap-majority-train.csv",
+        "traces-benign-majority-train.csv",
+        "traces-attack-majority-train.csv",
+        "traces-test.csv"
+    ]
+    create_one_graph_from_the_first_existing_dataset_subsample(
+        target_dataset_list=target_dataset_list
+    )

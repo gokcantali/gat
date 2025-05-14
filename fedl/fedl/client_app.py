@@ -9,6 +9,7 @@ from flwr.client import NumPyClient, Client, ClientApp
 from flwr.client.mod import secaggplus_mod
 from flwr.common import Context, Config, Scalar
 from flwr.client.mod.localdp_mod import LocalDpMod
+from sklearn.metrics import confusion_matrix
 from torch import load
 from torch_geometric.loader import RandomNodeLoader
 
@@ -43,20 +44,20 @@ class FlowerClient(NumPyClient):
     #     allow_multiple_runs=True
     # )
     def fit(self, parameters, config):
-        tracker = EmissionsTracker(
-            measure_power_secs=10,
-            experiment_id="2ef8bb00-570a-4110-b59f-68f8b5e5fd2a",
-            save_to_api=False,
-            allow_multiple_runs=True
-        )
+        # tracker = EmissionsTracker(
+        #     measure_power_secs=10,
+        #     experiment_id="2ef8bb00-570a-4110-b59f-68f8b5e5fd2a",
+        #     save_to_api=False,
+        #     allow_multiple_runs=True
+        # )
         self.net.set_parameters(parameters, config, is_evaluate=False)
-        tracker.start()
-        metrics = self.net.train_model(self.trainloader, self.valloader, batch_mode=True, epochs=1)
-        emissions = tracker.stop()
+        #tracker.start()
+        metrics = self.net.train_model(self.trainloader, self.valloader, batch_mode=True, epochs=5)
+        #emissions = tracker.stop()
         # self.emissions = emissions if not math.isnan(emissions) else emissions
 
         metrics_to_aggregate = {
-            "carbon": emissions
+            "carbon": 0,
         }
         for metric, values in asdict(metrics).items():
             metrics_to_aggregate[metric] = values[-1]
@@ -75,11 +76,21 @@ class FlowerClient(NumPyClient):
 
     def evaluate(self, parameters, config):
         self.net.set_parameters(parameters, config, is_evaluate=True)
-        _, loss, perf_metrics = self.net.test_model_batch_mode(self.testloader)
+        preds, loss, perf_metrics, labels = self.net.test_model_batch_mode(self.testloader)
         print("METRICS OF CLIENT:")
         print(perf_metrics)
+        print("Confusion Matrix:")
+        print(confusion_matrix(labels, preds))
         return loss, len(self.testloader), perf_metrics
 
+CLIENT_ID_TO_TRAIN_DATASET = {
+    0: "data/subsample/graph/traces-benign-majority-train.pt",
+    1: "data/subsample/graph/traces-dos-majority-train.pt",
+    2: "data/subsample/graph/traces-port-majority-train.pt",
+    3: "data/subsample/graph/traces-zap-majority-train.pt",
+    4: "data/subsample/graph/traces-attack-majority-train.pt"
+}
+TEST_DATASET = "data/subsample/graph/traces-test.pt"
 
 def construct_flower_client(client_id, context):
     # Load model
@@ -88,10 +99,10 @@ def construct_flower_client(client_id, context):
     # Note: each client gets a different trainloader/valloader, so each client
     # will train and evaluate on their own unique data partition
     # Read the node_config to fetch data partition associated to this node
-    num_parts = 50
+    num_parts = 10
     root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 
-    test_graph_data = load(Path(f'{root}/data/graph/worker{client_id}-traces-75min-test.pt'))
+    test_graph_data = load(Path(f'{root}/{TEST_DATASET}'))
     test_graph_data.x[:, 18] = torch.zeros_like(test_graph_data.x[:, 18])
     test_graph_data.x[:, 19] = torch.zeros_like(test_graph_data.x[:, 19])
 
@@ -101,7 +112,7 @@ def construct_flower_client(client_id, context):
         test_loader.append(batch)
         y_true += batch.y
 
-    train_graph_data = load(Path(f'{root}/data/graph/worker{client_id}-traces-75min-train.pt'))
+    train_graph_data = load(Path(f'{root}/{CLIENT_ID_TO_TRAIN_DATASET[client_id]}'))
     train_graph_data.x[:, 18] = torch.zeros_like(train_graph_data.x[:, 18])
     train_graph_data.x[:, 19] = torch.zeros_like(train_graph_data.x[:, 19])
 

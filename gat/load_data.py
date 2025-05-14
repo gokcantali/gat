@@ -6,7 +6,7 @@ from sklearn.model_selection import train_test_split
 from torch import save, load
 from torch_geometric.data import Data
 
-from .constants import TEST_SIZE
+from gat.constants import TEST_SIZE
 
 PROJECT_ROOT = Path(__file__).parent.parent
 
@@ -31,8 +31,10 @@ def save_graph_data(data: Data, name: str = None, path: str = None):
     save(data, file_path)
 
 
-def load_graph_data(name = 'traces-3ddos-2zap-1scan.pt'):
-    file_path = Path(f"data/graph/{name}")
+def load_graph_data(name='traces-3ddos-2zap-1scan.pt', folder=None):
+    if folder is None:
+        folder = "data/graph"
+    file_path = Path(f"{folder}/{name}")
     return load(file_path)
 
 
@@ -44,9 +46,9 @@ def create_subset_from_dataset_using_monte_carlo(file_name: str):
     df = load_data(file_path=file_path, sampling_ratio=1.0)
 
     # Randomly sample a subset of the data using random ratios for each class
-    benign_ratio = np.random.uniform(0.2, 1)
-    dos_ratio = np.random.uniform(0.3, 1)
-    port_scan_ratio = np.random.uniform(0.5, 1)
+    benign_ratio = np.random.uniform(0.01, 0.01)
+    dos_ratio = np.random.uniform(0.10, 0.10)
+    port_scan_ratio = np.random.uniform(0.10, 0.10)
     zap_scan_ratio = np.random.uniform(1, 1)
 
     # Sample the data based on the drawn ratios
@@ -78,5 +80,6 @@ def create_subset_from_dataset_using_monte_carlo(file_name: str):
 
     return df_subset
 
-
-# create_subset_from_dataset_using_monte_carlo(Path(f"{PROJECT_ROOT}/data/sampled-traces-3ddos-2zap-1scan.csv"))
+if __name__ == "__main__":
+    # pass
+    create_subset_from_dataset_using_monte_carlo("sampled-traces-3ddos-2zap-1scan.csv")

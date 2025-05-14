@@ -19,20 +19,103 @@ plt.rcParams.update({
     "font.family": "Helvetica"
 })
 
+# Set font properties
+plt.rc('font', family='helvetica', size=FONT_SIZE)
+plt.rc('axes', titlesize=FONT_SIZE)
+plt.rc('axes', labelsize=FONT_SIZE)
+plt.rc('xtick', labelsize=FONT_SIZE)
+plt.rc('ytick', labelsize=FONT_SIZE)
+plt.rc('legend', fontsize=FONT_SIZE)
+
+
+def plot_histogram(values, title, ax=None):
+    """ This function plots a histogram for the values of a list """
+
+    # Count the occurrences of each value
+    unique_values, counts = np.unique(values, return_counts=True)
+
+    if ax is None:
+        _, ax = plt.subplots()
+
+    bars = ax.bar(unique_values, counts, color=COLORS, edgecolor='black')
+
+    ax.set(title=title, xlabel='Classes', ylabel='Count')
+
+    total = len(values)
+    for bar in bars:
+        height = bar.get_height()
+        ax.text(bar.get_x() + bar.get_width() / 2.,
+            height,
+            f'{height / total:.1%}%',
+            ha='center', va='bottom'
+        )
+
+    # Adjust the y-axis limit so that the labels are not cut off
+    ax.set_ylim(0, max(counts) * 1.1)
+
+
+def plot_dataset_class_histograms():
+    import pandas as pd
+
+    CLASS_TO_LABEL_MAPPING = {
+        0: "Benign",
+        1: "DoS",
+        2: "Port Scan",
+        3: "ZAP Scan",
+    }
+    DATASETS = [
+        {
+            "name": "Benign Majority",
+            "path": "data/subsample/traces-benign-majority-train.csv",
+        },
+        {
+            "name": "DoS Majority",
+            "path": "data/subsample/traces-dos-majority-train.csv",
+        },
+        {
+            "name": "Port Majority",
+            "path": "data/subsample/traces-port-majority-train.csv",
+        },
+        {
+            "name": "ZAP Majority",
+            "path": "data/subsample/traces-zap-majority-train.csv",
+        },
+        {
+            "name": "Attack Majority",
+            "path": "data/subsample/traces-attack-majority-train.csv",
+        },
+    ]
+
+    fig = plt.figure(figsize=(16, 16))
+    layout = [
+        ['plot1', 'plot1', 'plot2', 'plot2'],
+        ['plot3', 'plot3', 'plot4', 'plot4'],
+        ['.', 'plot5', 'plot5', '.']
+    ]
+
+    ax_dict = fig.subplot_mosaic(layout)
+
+    for ind, dataset in enumerate(DATASETS):
+        df = pd.read_csv(dataset["path"])
+        classes = df["anomaly_class"].values
+        class_labels = pd.Series(classes).map(CLASS_TO_LABEL_MAPPING)
+        plot_histogram(
+            class_labels,
+            dataset["name"],
+            ax=ax_dict[f'plot{ind+1}']
+        )
+
+    plt.tight_layout()
+    plt.subplots_adjust(hspace=0.4)
+
+    file_path = "results/NATWORK-Demo/Dataset-Histogram.png"
+    plt.savefig(file_path, dpi=300)
 
 def plot_dp_related_chart(series_list, label_list, title, filename):
     """
     This function plots graphs related to the results of differential privacy experiments.
     It uses matplotlib to create a scatter plot with different colors for different epsilon values.
     """
-
-    # Set font properties
-    plt.rc('font', family='helvetica', size=FONT_SIZE)
-    plt.rc('axes', titlesize=FONT_SIZE)
-    plt.rc('axes', labelsize=FONT_SIZE)
-    plt.rc('xtick', labelsize=FONT_SIZE)
-    plt.rc('ytick', labelsize=FONT_SIZE)
-    plt.rc('legend', fontsize=FONT_SIZE)
 
     # Data for plotting
     t = np.arange(1, 6, 1)
@@ -121,14 +204,6 @@ def plot_carbon_related_chart(series_list, label_list, title, filename):
     It uses matplotlib to create a plot with different colors for different epsilon values.
     """
 
-    # Set font properties
-    plt.rc('font', family='helvetica', size=FONT_SIZE)
-    plt.rc('axes', titlesize=FONT_SIZE)
-    plt.rc('axes', labelsize=FONT_SIZE)
-    plt.rc('xtick', labelsize=FONT_SIZE)
-    plt.rc('ytick', labelsize=FONT_SIZE)
-    plt.rc('legend', fontsize=FONT_SIZE)
-
     # Data for plotting
     t = np.arange(1, 61, 1)
 
@@ -181,4 +256,5 @@ def plot_all_fl_carbon_charts():
 
 if __name__ == "__main__":
     # plot_all_dp_charts()
-    plot_all_fl_carbon_charts()
+    # plot_all_fl_carbon_charts()
+    plot_dataset_class_histograms()

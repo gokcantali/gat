@@ -32,23 +32,24 @@ def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
     return aggregated_metrics
 
 
-NUM_ROUNDS = 3
-METHOD = "simple_avg"
-TRIAL = "23th"
+NUM_ROUNDS = 10
+METHOD = "non_cf"
+TRIAL = "1st"
 
-EXPERIMENT_NAME = f"5Nodes-{NUM_ROUNDS}Rounds-{METHOD}"
+EXPERIMENT_NAME = "NATWORK Demo"
 EXPERIMENT_ID = mlflow.set_experiment(
     experiment_name=EXPERIMENT_NAME
 ).experiment_id
 
 RUN_ID = mlflow.start_run(
     experiment_id=EXPERIMENT_ID,
-    run_name=f"{TRIAL} Trial"
+    run_name="WP4"
 ).info.run_id
 mlflow.end_run()
 
 current_training_round = 0
 
+#@mlflow.trace
 def training_metrics_aggregation(metrics: List[Tuple[int, Metrics]]) -> Metrics:
     global current_training_round
     current_training_round += 1
@@ -58,7 +59,7 @@ def training_metrics_aggregation(metrics: List[Tuple[int, Metrics]]) -> Metrics:
     other_metrics_weighted_total = {}
 
     for num_examples, m in metrics:
-        print(f"Client with {num_examples} samples emitted {m['carbon']} kgCO2")
+        # print(f"Client with {num_examples} samples emitted {m['carbon']} kgCO2")
         total_emission += m["carbon"]
         for field in m:
             if field != "carbon":
