@@ -68,7 +68,7 @@ class RNNClassifier(torch.nn.Module):
 class NetworkTrafficRNN(torch.nn.Module):
     def __init__(
         self, input_size, hidden_size, num_layers,
-        num_classes, dropout, hyperparams=None
+        num_classes, dropout, is_bidirectional=False, hyperparams=None
     ):
         super(NetworkTrafficRNN, self).__init__()
         if hyperparams is None:
@@ -77,7 +77,7 @@ class NetworkTrafficRNN(torch.nn.Module):
         self.num_layers = num_layers
 
         # RNN layer
-        self.rnn = torch.nn.GRU(input_size, hidden_size, num_layers, batch_first=True)
+        self.rnn = torch.nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
 
         # Fully connected layer
         self.fc = torch.nn.Linear(hidden_size, num_classes)
@@ -87,6 +87,7 @@ class NetworkTrafficRNN(torch.nn.Module):
 
         # Computation Device
         # self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.is_bidirectional = is_bidirectional
 
         # Set hyperparameters
         if hyperparams and type(hyperparams) is dict:
@@ -97,10 +98,24 @@ class NetworkTrafficRNN(torch.nn.Module):
 
     def forward(self, x):
         # Initialize hidden state
-        h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size)  # .to(self.device)
-
-        # Forward propagate RNN
-        out, _ = self.rnn(x, h0)
+        if type(self.rnn) != torch.nn.LSTM:
+            h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size)
+            # Forward propagate RNN
+            out, _ = self.rnn(x, h0)
+        else:
+            num_directions = 2 if self.is_bidirectional else 1
+            h_0 = torch.zeros(
+                num_directions * self.num_layers,
+                x.size(0),
+                self.hidden_size
+            )
+            c_0 = torch.zeros(
+                num_directions * self.num_layers,
+                x.size(0),
+                self.hidden_size
+            )
+            # Forward propagate RNN
+            out, _ = self.rnn(x, (h_0, c_0))
 
         # Decode the hidden state of the last time step
         out = self.dropout(out[:, -1, :])
@@ -274,14 +289,14 @@ if __name__ == '__main__':
     data = process_timestamps(data)
     data['label'] = preprocess_y(df)
 
-    # sequence_length = 1
-    # X, y = create_sequences(
-    #     data, sequence_length
-    # )
-
-    X, y = create_sequences_based_on_session(
-        data
+    sequence_length = 20
+    X, y = create_sequences(
+        data, sequence_length
     )
+
+    # X, y = create_sequences_based_on_session(
+    #     data
+    # )
 
     # Normalization is a must here!
     mean = X.mean(axis=(0, 1), keepdims=True)
