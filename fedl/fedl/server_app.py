@@ -36,14 +36,14 @@ NUM_ROUNDS = 10
 METHOD = "non_cf"
 TRIAL = "1st"
 
-EXPERIMENT_NAME = "NATWORK Demo"
+EXPERIMENT_NAME = "GNN-based IDS"
 EXPERIMENT_ID = mlflow.set_experiment(
     experiment_name=EXPERIMENT_NAME
 ).experiment_id
 
 RUN_ID = mlflow.start_run(
     experiment_id=EXPERIMENT_ID,
-    run_name="WP4"
+    run_name="FL - 5 Clients - 10 Rounds",
 ).info.run_id
 mlflow.end_run()
 

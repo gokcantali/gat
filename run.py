@@ -338,7 +338,7 @@ if __name__ == "__main__":
     #                 use_pretrained_model=use_pretrained_model,
     #                 fl_rounds=50
     #             )
-    fig, axes = plt.subplots(nrows=3, ncols=2, figsize=(25, 15))
+    fig, axes = plt.subplots(nrows=3, ncols=2, figsize=(14, 17))
 
     CLASS_NAMES = ["Benign", "DoS", "Port Scan", "Zap Scan"]
     TRAIN_GRAPHS = [
