@@ -12,8 +12,8 @@ from gat.load_data import load_data
 from gat.vnf_ds_preprocesser import preprocess_df, preprocess_X, preprocess_y
 
 
-TEST_RATIO = 0.10
-VALIDATION_RATIO = 0.30
+TEST_RATIO = 0.20
+VALIDATION_RATIO = 0.20
 TRIALS = 3
 
 
@@ -169,14 +169,35 @@ def train_svm_with_k_fold_cv(X_train_val, y_train_val, is_verbose=True):
 if __name__ == '__main__':
     #RANDOM_STATE = 42
 
-    dataset_indices = [1, 2, 3, 5, 6, 7, 8, 9]#, 5, 6, 7, 8, 9]
+    # dataset_indices = [1, 3, 5]#, 5, 6, 7, 8, 9]
+    # df = pd.DataFrame()
+    # for ds_index in dataset_indices:
+    #     ds_df = load_data(Path(f"data/sessions_{ds_index}_vDNS.csv"))
+    #     df = pd.concat([df, ds_df], ignore_index=True)
+    dataset_names = ["vIDS.csv", "vDNS.csv", "vLB.csv", "vProxy.csv", "vRouter_vFW.csv"]
     df = pd.DataFrame()
-    for ds_index in dataset_indices:
-        ds_df = load_data(Path(f"data/sessions_{ds_index}_vDNS.csv"))
+    for ds_name in dataset_names:
+        ds_df = load_data(Path(f"data/VNFCyberData/{ds_name}"))
         df = pd.concat([df, ds_df], ignore_index=True)
 
     print(df.groupby(['label']).size())
-    X, y = preprocess_df(df, use_diversity_index=True)
+    X, y = preprocess_df(df, use_diversity_index=False)
+
+    X = X.drop(columns=['source_mac_normalized'])
+    X = X.drop(columns=['destination_asn_normalized'])
+    X = X.drop(columns=['protocols_normalized'])
+    X = X.drop(columns=['version_normalized'])
+    X = X.drop(columns=['uri_normalized'])
+    X = X.drop(columns=['host_normalized'])
+    X = X.drop(columns=['hostname_normalized'])
+    X = X.drop(columns=['alt_name_normalized'])
+    X = X.drop(columns=['geo_normalized'])
+
+    for i in range(1, 9):
+        X = X.drop(columns=[f'source_ip_part{i}'])
+        X = X.drop(columns=[f'destination_ip_part{i}'])
+    X = X.drop(columns=['source_port_label_normalized'])
+    X = X.drop(columns=['destination_port_label_normalized'])
 
     for _ in range(TRIALS):
         X_train_val, X_test, y_train_val, y_test = train_test_split(

@@ -30,6 +30,8 @@ def ip_encoder(df, column_name, raise_error_for_invalid_ip=True):
 
 def string_encoder(df, column_name):
     def get_hash(x):
+        if isinstance(x, int):
+            return x
         if pd.notna(x):
             return int(hashlib.sha256(x.encode()).hexdigest(), 16)
         else:
@@ -46,7 +48,33 @@ def string_encoder(df, column_name):
 
 def number_normalizer(df, column_name):
     df[f"{column_name}_int"] = df[column_name].apply(
-        lambda x: int(x) if pd.notna(x) else None)
+        lambda x: int(x) if pd.notna(x) and x != '' else None)
+    tensor = torch.tensor(df[f"{column_name}_int"].dropna().values.astype(float))
+    min_val = torch.min(tensor)
+    max_val = torch.max(tensor)
+    normalized_tensor = (tensor - min_val) / (max_val - min_val)
+    normalized_series = pd.Series(
+        normalized_tensor.numpy(), index=df[df[column_name].notna()].index)
+    df[f"{column_name}_normalized"] = normalized_series
+    df = df.drop([column_name, f"{column_name}_int"], axis=1)
+    return df
+
+def hex_encoder(df, column_name):
+    def encode_hex(x):
+        x_str = str(x)
+        if "+" in x_str:
+            # handle the scientific notation case
+            x_str = str(int(float(x_str)))
+
+        if len(x_str) > 16:
+            # treat hex strings larger than 16 characters as zeros
+            return 0
+
+        if pd.notna(x_str) and x_str != '':
+            return int(x_str, 16)
+        else:
+            return 0
+    df[f"{column_name}_int"] = df[column_name].apply(encode_hex)
     tensor = torch.tensor(df[f"{column_name}_int"].dropna().values.astype(float))
     min_val = torch.min(tensor)
     max_val = torch.max(tensor)

@@ -7,6 +7,7 @@ from gat.encoder import (
     ip_encoder,
     number_normalizer,
     string_encoder,
+    hex_encoder
 )
 from gat.load_data import load_data
 
@@ -17,17 +18,17 @@ def enumerate_attack_classes(x):
     elif 'dns amp' in x.lower():
         return 1
     elif 'dns exf' in x.lower():
-        return 2
+        return 1
     elif 'dns spoof' in x.lower():
-        return 3
+        return 1
     elif 'malware' in x.lower():
-        return 4
+        return 1
     elif 'scan' in x.lower():
-        return 5
+        return 1
     elif 'udp flood' in x.lower():
-        return 6
+        return 1
     else:
-        return 7
+        return 1
 
 
 def diversity_index(series):
@@ -88,6 +89,8 @@ def preprocess_X(df, use_diversity_index=True):
         "destination_country": string_encoder,
         "source_port_label": number_normalizer,
         "destination_port_label": number_normalizer,
+        "payload_source_utf8": hex_encoder,
+        "payload_destination_utf8": hex_encoder,
         "source_mac": string_encoder,
         "destination_asn": string_encoder,
         "protocols": string_encoder,
