@@ -7,6 +7,7 @@ from flwr.server import ServerAppComponents, ServerConfig, ServerApp, start_serv
 from flwr.server.workflow import SecAggPlusWorkflow, DefaultWorkflow
 
 from run import initialize_gcn_model
+from vnf_ds_benchmark import initialize_model as initialize_rnn_model
 from .custom_strategy import SimpleClientManagerWithPrioritizedSampling, FedAvgCF, CF_METHODS
 
 mlflow.set_tracking_uri("http://localhost:8080")
@@ -32,11 +33,12 @@ def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
     return aggregated_metrics
 
 
-NUM_ROUNDS = 3
+NUM_ROUNDS = 5
 METHOD = "simple_avg"
 TRIAL = "23th"
+ML_MODEL = "RNN"  # or "GCN"
 
-EXPERIMENT_NAME = f"5Nodes-{NUM_ROUNDS}Rounds-{METHOD}"
+EXPERIMENT_NAME = f"{ML_MODEL}-5Nodes-{NUM_ROUNDS}Rounds-{METHOD}"
 EXPERIMENT_ID = mlflow.set_experiment(
     experiment_name=EXPERIMENT_NAME
 ).experiment_id
@@ -102,12 +104,19 @@ def log_model_params_and_metrics_to_mlflow(
 
         if params and current_training_round == NUM_ROUNDS:
             # log the model only once at the end
-            model = initialize_gcn_model(num_classes=4)
+            if ML_MODEL == "GNN":
+                model = initialize_gcn_model(num_classes=4)
+            elif ML_MODEL == "RNN":
+                model = initialize_rnn_model()
+            else:
+                print("Unknown model type. Please use 'GNN' or 'RNN'.")
+                return
+
             model.set_parameters(params, None, False)
             mlflow.pytorch.log_model(
                 pytorch_model=model,
-                artifact_path=f"GNN-{EXPERIMENT_NAME}",
-                registered_model_name=f"GNN-{EXPERIMENT_NAME}-{TRIAL}Trial"
+                artifact_path=f"{ML_MODEL}-{EXPERIMENT_NAME}",
+                registered_model_name=f"{ML_MODEL}-{EXPERIMENT_NAME}-{TRIAL}Trial"
             )
 
 strategy = FedAvgCF(

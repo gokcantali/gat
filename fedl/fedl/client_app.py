@@ -81,6 +81,69 @@ class FlowerClient(NumPyClient):
         return loss, len(self.testloader), perf_metrics
 
 
+class FlowerClientRNN(NumPyClient):
+    def __init__(
+        self, net,
+        X_train_seq, y_train_seq,
+        X_val_seq, y_val_seq,
+        X_test_seq, y_test_seq,
+        **kwargs
+    ):
+        super().__init__(**kwargs)
+        self.net = net
+        self.X_train_seq = X_train_seq
+        self.y_train_seq = y_train_seq
+        self.X_val_seq = X_val_seq
+        self.y_val_seq = y_val_seq
+        self.X_test_seq = X_test_seq
+        self.y_test_seq = y_test_seq
+
+    def get_properties(self, config: Config) -> dict[str, Scalar]:
+        return self.get_context().node_config
+
+    def get_parameters(self, config):
+        return self.net.get_parameters()
+
+    def fit(self, parameters, config):
+        from vnf_ds_benchmark import train_model as train_model_rnn
+        tracker = EmissionsTracker(
+            measure_power_secs=10,
+            experiment_id="6d102989-535b-459e-ab34-406ee6a2bb54",
+            save_to_api=False,
+            allow_multiple_runs=True
+        )
+        self.net.set_parameters(parameters, config, is_evaluate=False)
+        tracker.start()
+        new_model, loss, f1_score = train_model_rnn(
+            self.net, self.X_train_seq, self.y_train_seq, self.X_val_seq, self.y_val_seq
+        )
+        emissions = tracker.stop()
+        # self.emissions = emissions if not math.isnan(emissions) else emissions
+        print("TRAINING DONE!")
+        print("F1 Score:", f1_score)
+
+        metrics_to_aggregate = {
+            "f1_score": f1_score[0],
+            "carbon": emissions
+        }
+        print("METRICS OF CLIENT: ", metrics_to_aggregate)
+
+        return (
+            self.net.get_parameters(),
+            len(self.X_train_seq),
+            metrics_to_aggregate
+        )
+
+    def evaluate(self, parameters, config):
+        from vnf_ds_benchmark import evaluate_model as evaluate_model_rnn
+
+        self.net.set_parameters(parameters, config, is_evaluate=True)
+        loss, f1, report = evaluate_model_rnn(self.net, self.X_test_seq, self.y_test_seq)
+        print("METRICS OF CLIENT:")
+        print(report)
+        return loss, len(self.X_test_seq), {"f1_score": f1}
+
+
 def construct_flower_client(client_id, context):
     # Load model
     net = initialize_gcn_model(num_classes=4)
@@ -123,13 +186,28 @@ def construct_flower_client(client_id, context):
     return flower_client.to_client()
 
 
+def construct_flower_client_rnn_vnf_datasets(client_id, context):
+    from vnf_ds_benchmark import prepare_datasets, initialize_model
+
+    net = initialize_model()
+    X_train, y_train, X_val, y_val, X_test, y_test = prepare_datasets(
+        dataset_ids=[client_id],
+    )
+
+    flower_client = FlowerClientRNN(
+        net, X_train, y_train, X_val, y_val, X_test, y_test
+    )
+    flower_client.set_context(context)
+    return flower_client.to_client()
+
+
 def client_fn(context: Context) -> Client:
     """Create a Flower client representing a single organization."""
 
     partition_id = context.node_config["partition-id"]
 
     # Construct the client
-    flower_client = construct_flower_client(
+    flower_client = construct_flower_client_rnn_vnf_datasets(
         client_id=partition_id, context=context
     )
     return flower_client

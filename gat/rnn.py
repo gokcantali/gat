@@ -1,5 +1,8 @@
+import sys
 import warnings
-from collections import Counter
+from collections import Counter, OrderedDict
+from typing import List
+
 from sklearn.metrics import f1_score, classification_report
 
 import numpy as np
@@ -11,6 +14,7 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 import torch
 from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence
 from sklearn.model_selection import train_test_split, TimeSeriesSplit, StratifiedKFold
+from sklearn.metrics import classification_report, f1_score as calculate_f1_score
 from torch.utils.data import DataLoader, TensorDataset
 
 from gat.load_data import load_data
@@ -99,7 +103,7 @@ class NetworkTrafficRNN(torch.nn.Module):
         self.is_bidirectional = is_bidirectional
 
         # Set hyperparameters
-        if hyperparams and type(hyperparams) is dict:
+        if type(hyperparams) is dict:
             self.batch_size = hyperparams.get('batch_size', 32)
             self.learning_rate = hyperparams.get('learning_rate', 0.001)
             self.num_epochs = hyperparams.get('num_epochs', 10)
@@ -146,6 +150,7 @@ class NetworkTrafficRNN(torch.nn.Module):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
 
         best_val_loss = float('inf')
+        best_f1_score = 0.0
         patience_counter = 0
 
         for epoch in range(self.num_epochs):
@@ -169,6 +174,8 @@ class NetworkTrafficRNN(torch.nn.Module):
             val_loss = 0.0
             correct = 0
             total = 0
+            predicted_list = []
+            correct_list = []
             with torch.no_grad():
                 for padded_X, labels, lengths in val_loader:
                     # inputs, labels = inputs.to(self.device), labels.to(self.device)
@@ -179,15 +186,17 @@ class NetworkTrafficRNN(torch.nn.Module):
                     _, predicted = torch.max(logits, 1)
                     total += labels.size(0)
                     correct += (predicted == labels).sum().item()
+                    predicted_list.append(predicted.cpu())
+                    correct_list.append(labels.cpu())
 
             # Calculate metrics
             train_loss = train_loss / len(train_loader.dataset)
             val_loss = val_loss / len(val_loader.dataset)
-            val_acc = correct / total
 
             # Early stopping check
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
+                best_f1_score = calculate_f1_score(correct_list, predicted_list, average='weighted'),
                 patience_counter = 0
                 torch.save(self.state_dict(), '../rnn_best_model.pth')  # Save best model
             else:
@@ -197,10 +206,13 @@ class NetworkTrafficRNN(torch.nn.Module):
                     self.load_state_dict(torch.load("../rnn_best_model.pth"))
                     break
 
-    def evaluate_rnn(self, X, y):
-        from sklearn.metrics import classification_report, f1_score as calculate_f1_score
+        self.load_state_dict(torch.load("../rnn_best_model.pth"))
+        return best_val_loss, best_f1_score
 
+    def evaluate_rnn(self, X, y):
         self.eval()
+
+        criterion = torch.nn.CrossEntropyLoss()
         test_loader = DataLoader(
             SequenceDataset(X, y),
             batch_size=self.batch_size,
@@ -209,20 +221,52 @@ class NetworkTrafficRNN(torch.nn.Module):
         )
 
         prediction_list, label_list = [], []
+        test_loss = 0.0
         with torch.no_grad():
             for padded_X, labels, lengths in test_loader:
                 logits = self(padded_X, lengths)
                 prediction_list.append(torch.argmax(logits, 1).cpu())
                 label_list.append(labels.cpu())
 
+                loss = criterion(logits, labels)
+                test_loss += loss.item() * labels.size(0)
+
         y_true = torch.cat(label_list)
         y_pred = torch.cat(prediction_list)
 
         return (
+            test_loss / len(test_loader.dataset),
             calculate_f1_score(y_true, y_pred, average='weighted'),
             classification_report(y_true, y_pred, output_dict=True)
         )
 
+    def set_parameters(self, parameters: List[np.ndarray], config, is_evaluate=False):
+        if config is None:
+            config = {}
+        params_dict = zip(self.state_dict().keys(), parameters)
+        state_dict = OrderedDict({k: torch.Tensor(v) for k, v in params_dict})
+        self.load_state_dict(state_dict, strict=True)
+
+        model_file_name = self._construct_model_file_name(config)
+
+        if is_evaluate is False:
+            torch.save(state_dict, model_file_name)
+
+    def get_parameters(self) -> List[np.ndarray]:
+        return [val.cpu().numpy() for _, val in self.state_dict().items()]
+
+    @staticmethod
+    def _construct_model_file_name(config):
+        total_rounds = config.get("total_rounds", 20)
+        model_file_name = f"best_RNN_model_FL_{total_rounds}_"
+
+        cf_method = config.get("cf_method", "NON_CF")
+        model_file_name += cf_method
+
+        trial = config.get("trial", "First")
+        model_file_name += f"-{trial}.pt"
+
+        return model_file_name
 
 def create_hyper_param_space():
     """ constructs an array of hyperparameter configuration based on the
@@ -230,11 +274,11 @@ def create_hyper_param_space():
     from itertools import product
 
     hyper_param_space = {
-        "learning_rate": [0.001, 0.01, 0.05],
-        "batch_size": [32, 64, 128],
-        "num_epochs": [10, 20],# 30],
+        "learning_rate": [0.001],# 0.01, 0.05],
+        "batch_size": [32, 64],# 128],
+        "num_epochs": [20],#[10, 20],# 30],
         "patience": [3],# 5, 7],
-        "num_layers": [2, 3],
+        "num_layers": [2,],# 3],
         "hidden_size": [64, 128],# 256],
         "dropout": [0.05],# 0.1, 0.2],
     }
@@ -257,9 +301,9 @@ def create_hyper_param_space_for_SVM():
     from itertools import product
 
     hyper_param_space = {
-        "kernel": ["rbf"],# "linear"],
-        "C": [0.01],#, 0.1, 1, 10],
-        "tol": [0.001],#, 0.01, 0.1], # tolerance for stopping criteria
+        "kernel": ["rbf", "linear"],
+        "C": [0.01, 0.1, 1],
+        "tol": [0.001, 0.005], # tolerance for stopping criteria
     }
 
     # Create a list of all combinations of hyperparameters
@@ -280,9 +324,9 @@ def create_hyper_param_space_for_random_forest():
     from itertools import product
 
     hyper_param_space = {
-        "max_depth": [5, 10],#, 15, 20, 50, 100],
-        "n_estimators": [50, 100],# 150, 250, 500],
-        "max_leaf_nodes": [10, 20],# 30, 40, 50]
+        "max_depth": [5, 10, 20],#, 15, 20, 50, 100],
+        "n_estimators": [50, 100, 150],# 150, 250, 500],
+        "max_leaf_nodes": [10, 20, 30],# 30, 40, 50]
     }
 
     # Create a list of all combinations of hyperparameters
@@ -399,6 +443,7 @@ def benchmark_model(classifier="RF"):
 
 
 if __name__ == '__main__':
+    window_seconds, rnn_cell = int(sys.argv[1]), sys.argv[2]
     df = load_data(
         "../data/subsample/traces-benign0.01-dos0.10-port0.10-zap1.00.csv",
     )
@@ -413,7 +458,6 @@ if __name__ == '__main__':
 
     #data = process_timestamps(data, keep_timestamp=True)
 
-    rnn_cell = "RNN"
     # sequence_length = 20
     # X, y = create_sequences(
     #     data, sequence_length
@@ -429,7 +473,7 @@ if __name__ == '__main__':
 
     X, y = create_time_window_sequences(
         data=data,
-        window_seconds=3,
+        window_seconds=window_seconds,
         label_reducer=lambda l: Counter(l).most_common(1)[0][0]
     )
     # # Normalization is a must here!
@@ -487,11 +531,12 @@ if __name__ == '__main__':
                 )
 
                 # Evaluate the model
-                f1_score, _ = model.evaluate_rnn(
+                _, f1_score, _ = model.evaluate_rnn(
                     X_inner_test,
                     y_inner_test
                 )
                 avg_f1_score_per_fold += f1_score / 3
+                break
 
             # Save the best model
             if avg_f1_score_per_fold > best_score:
@@ -526,7 +571,7 @@ if __name__ == '__main__':
         )
 
         # Evaluate the model on the outer test set
-        _, classification_report = model.evaluate_rnn(
+        _, _, classification_report = model.evaluate_rnn(
             X_test,
             y_test
         )
