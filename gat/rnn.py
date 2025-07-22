@@ -170,6 +170,7 @@ class NetworkTrafficRNN(torch.nn.Module):
 
         best_val_loss = float('inf')
         best_f1_score = 0.0
+        best_parameter_state = {}
         patience_counter = 0
 
         for epoch in range(self.num_epochs):
@@ -213,15 +214,15 @@ class NetworkTrafficRNN(torch.nn.Module):
                     y_pred = torch.cat(predicted_list).numpy()
                     best_f1_score = calculate_f1_score(y_true, y_pred, average='weighted')
                 patience_counter = 0
-                torch.save(self.state_dict(), '../rnn_best_model.pth')  # Save best model
+                best_parameter_state = self.state_dict()
             else:
                 patience_counter += 1
                 if patience_counter >= self.patience:
                     # print("Early stopping triggered!")
-                    self.load_state_dict(torch.load("../rnn_best_model.pth"))
+                    self.load_state_dict(best_parameter_state)
                     break
 
-        self.load_state_dict(torch.load("../rnn_best_model.pth"))
+        self.load_state_dict(best_parameter_state)
         return best_val_loss, best_f1_score
 
     def evaluate_rnn(self, X, y):

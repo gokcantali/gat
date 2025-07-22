@@ -587,21 +587,21 @@ def prepare_datasets(dataset_ids=None, window_size_msec=20, stride_size_msec=50)
     if 'timestamp' not in training_ds.columns:
         training_ds['timestamp'] = np.arange(len(training_ds))
     # X_train_seq, y_train_seq = create_time_window_sequences(training_ds, window_size_msec, stride_size_msec)
-    X_train_seq, y_train_seq = create_fixed_length_sequences(training_ds, sequence_length=10, stride=1, max_sequences=1000000, balance_classes=False)
+    X_train_seq, y_train_seq = create_fixed_length_sequences(training_ds, sequence_length=1, stride=1, max_sequences=1000000, balance_classes=False)
 
     validation_ds = pd.DataFrame(X_val)
     validation_ds['label'] = y_val
     if 'timestamp' not in validation_ds.columns:
         validation_ds['timestamp'] = np.arange(len(validation_ds))
     # X_val_seq, y_val_seq = create_time_window_sequences(validation_ds, window_size_msec, stride_size_msec)
-    X_val_seq, y_val_seq = create_fixed_length_sequences(validation_ds, sequence_length=10, stride=1, max_sequences=1000000, balance_classes=False)
+    X_val_seq, y_val_seq = create_fixed_length_sequences(validation_ds, sequence_length=1, stride=1, max_sequences=1000000, balance_classes=False)
 
     test_ds = pd.DataFrame(X_test)
     test_ds['label'] = y_test
     if 'timestamp' not in test_ds.columns:
         test_ds['timestamp'] = np.arange(len(test_ds))
     # X_test_seq, y_test_seq = create_time_window_sequences(test_ds, window_size_msec, stride_size_msec)
-    X_test_seq, y_test_seq = create_fixed_length_sequences(test_ds, sequence_length=10, stride=1, max_sequences=1000000, balance_classes=False)
+    X_test_seq, y_test_seq = create_fixed_length_sequences(test_ds, sequence_length=1, stride=1, max_sequences=1000000, balance_classes=False)
 
     return X_train_seq, y_train_seq, X_val_seq, y_val_seq, X_test_seq, y_test_seq
 

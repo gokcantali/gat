@@ -130,7 +130,7 @@ class FlowerClientRNN(NumPyClient):
         print("METRICS OF CLIENT: ", metrics_to_aggregate)
 
         return (
-            self.net.get_parameters(),
+            new_model.get_parameters(),
             len(self.X_train_seq),
             metrics_to_aggregate
         )
