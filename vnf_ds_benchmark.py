@@ -195,13 +195,13 @@ def create_hyper_param_space_for_rnn():
     return hyper_param_combs
 
 
-def create_time_window_sequences(data, window_seconds=1.0, stride_seconds=0.5, label_reducer=None, max_sequences=1000):
+def create_time_window_sequences(data, window_seconds=0.001, stride_seconds=0.0005, label_reducer=None, max_sequences=10000):
     """
     Create sequences based on time windows from DataFrame with timestamp column.
 
     Args:
         data: DataFrame with features and label columns
-        window_seconds: Size of window in seconds
+        window_seconds: Size of window in seconds (for VNF data, try 0.001 as timestamps might be in ms)
         stride_seconds: Stride between windows in seconds
         label_reducer: Function to reduce labels in a window to a single value
                       (e.g., majority vote, most common, etc.)
@@ -212,7 +212,15 @@ def create_time_window_sequences(data, window_seconds=1.0, stride_seconds=0.5, l
         y: List of corresponding labels
     """
     if label_reducer is None:
-        label_reducer = lambda l: Counter(l).most_common(1)[0][0]
+        # Use most common label, but prioritize anomalies (label 1) to avoid class imbalance
+        def prioritize_anomaly(labels):
+            if 1 in labels:
+                count_ones = sum(1 for l in labels if l == 1)
+                if count_ones >= len(labels) * 0.3:  # If at least 30% are anomalies
+                    return 1
+            return Counter(labels).most_common(1)[0][0]
+
+        label_reducer = prioritize_anomaly
 
     # Ensure data has a timestamp column
     if 'timestamp' not in data.columns:
@@ -226,22 +234,50 @@ def create_time_window_sequences(data, window_seconds=1.0, stride_seconds=0.5, l
     labels = data['label']
     timestamps = data['timestamp'].values
 
-    # Convert timestamps to seconds if they're not already
+    # Convert timestamps to a normalized scale
+    # Determine scale based on timestamp range - if large values, might be microseconds
     min_timestamp = timestamps.min()
-    timestamps_sec = timestamps - min_timestamp
+    max_timestamp = timestamps.max()
+    timestamp_range = max_timestamp - min_timestamp
+
+    # Auto-detect time scale
+    time_scale = 1.0  # default seconds
+    if timestamp_range > 10000000:  # If range is very large (millions), likely microseconds
+        time_scale = 0.000001
+        print("Detected microsecond timestamps - adjusting window scale")
+    elif timestamp_range > 10000:  # If range is large (thousands), likely milliseconds
+        time_scale = 0.001
+        print("Detected millisecond timestamps - adjusting window scale")
+
+    # Adjust window and stride to the detected time scale
+    adjusted_window = window_seconds / time_scale
+    adjusted_stride = stride_seconds / time_scale
+
+    print(f"Original window: {window_seconds}s, stride: {stride_seconds}s")
+    print(f"Detected time scale: {time_scale}s")
+    print(f"Adjusted window: {adjusted_window}, stride: {adjusted_stride}")
+
+    timestamps_norm = timestamps - min_timestamp
 
     # Create sequences using sliding windows
     X, y = [], []
 
-    start_idx = 0
+    # Iterate through possible window start times
+    current_time = 0
+    max_time = timestamps_norm.max()
     seq_count = 0
-    while start_idx < len(data) and seq_count < max_sequences:
-        start_time = timestamps_sec[start_idx]
-        end_time = start_time + window_seconds
 
-        # Find all indices within the window
-        window_indices = np.where((timestamps_sec >= start_time) &
-                                 (timestamps_sec < end_time))[0]
+    # Track class distribution
+    class_counts = {0: 0, 1: 0}
+
+    print(f"Time range: 0 to {max_time} units")
+
+    while current_time < max_time and seq_count < max_sequences:
+        end_time = current_time + adjusted_window
+
+        # Find all indices within the current window
+        window_indices = np.where((timestamps_norm >= current_time) &
+                                 (timestamps_norm < end_time))[0]
 
         if len(window_indices) > 1:  # Ensure we have at least 2 points in the window
             window_features = features.iloc[window_indices].values
@@ -253,18 +289,116 @@ def create_time_window_sequences(data, window_seconds=1.0, stride_seconds=0.5, l
                 n = len(window_features) // 200 + 1
                 window_features = window_features[::n]
 
+            # Get the label for this sequence
+            sequence_label = label_reducer(window_labels)
+            class_counts[sequence_label] = class_counts.get(sequence_label, 0) + 1
+
             X.append(window_features)
-            y.append(label_reducer(window_labels))
+            y.append(sequence_label)
             seq_count += 1
 
-        # Move to next window based on stride
-        next_time = start_time + stride_seconds
-        next_indices = np.where(timestamps_sec >= next_time)[0]
-        if len(next_indices) == 0:
-            break
-        start_idx = next_indices[0]
+        # Move window forward by stride amount
+        current_time += adjusted_stride
 
-    print(f"Created {len(X)} sequences from data")
+    print(f"Created {len(X)} sequences from {len(data)} data points")
+    print(f"Class distribution in sequences: {class_counts}")
+    print(f"Average sequence length: {np.mean([len(seq) for seq in X]) if X else 0:.2f} points")
+    return X, y
+
+
+def create_fixed_length_sequences(data, sequence_length=10, stride=5, max_sequences=5000, balance_classes=True):
+    """
+    Create sequences of fixed length from DataFrame, without relying on timestamps.
+
+    Args:
+        data: DataFrame with features and label columns
+        sequence_length: Number of consecutive items in each sequence
+        stride: Number of items to slide forward when creating the next sequence
+        max_sequences: Maximum number of sequences to create (for performance)
+        balance_classes: Whether to balance the class distribution in generated sequences
+
+    Returns:
+        X: List of feature sequences
+        y: List of corresponding labels
+    """
+    # Ensure data has a 'label' column
+    if 'label' not in data.columns:
+        raise ValueError("Data must contain a 'label' column")
+
+    # Extract features and labels
+    features = data.drop(columns=['label'])
+    if 'timestamp' in features.columns:
+        features = features.drop(columns=['timestamp'])
+
+    labels = data['label']
+
+    # Create sequences using sliding windows of fixed length
+    X_normal, y_normal = [], []  # For label 0 (normal)
+    X_anomaly, y_anomaly = [], []  # For label 1 (anomaly)
+
+    # Track class distribution
+    class_counts = {0: 0, 1: 0}
+
+    # Create sequences
+    seq_count = 0
+    for i in range(0, len(data) - sequence_length + 1, stride):
+        if seq_count >= max_sequences and not balance_classes:
+            break
+
+        # Extract sequence
+        window_features = features.iloc[i:i+sequence_length].values
+        window_labels = labels.iloc[i:i+sequence_length].values
+
+        # Determine sequence label
+        # If at least 30% of points in window are anomalies (label 1), label sequence as anomaly
+        anomaly_ratio = np.sum(window_labels == 1) / len(window_labels)
+        if anomaly_ratio >= 0.1:
+            sequence_label = 1
+            X_anomaly.append(window_features)
+            y_anomaly.append(sequence_label)
+        else:
+            sequence_label = 0
+            X_normal.append(window_features)
+            y_normal.append(sequence_label)
+
+        # Update class distribution counter
+        class_counts[sequence_label] = class_counts.get(sequence_label, 0) + 1
+        seq_count += 1
+
+    # Balance classes if requested
+    if balance_classes:
+        # Determine the minimum number of sequences per class
+        min_class_count = min(len(X_normal), len(X_anomaly))
+        if min_class_count == 0:
+            # If one class has no sequences, just use what we have
+            X = X_normal + X_anomaly
+            y = y_normal + y_anomaly
+        else:
+            # Randomly select min_class_count sequences from each class
+            np.random.seed(42)  # For reproducibility
+            normal_indices = np.random.choice(len(X_normal), min(min_class_count*3, len(X_normal)), replace=False)
+            anomaly_indices = np.random.choice(len(X_anomaly), min(min_class_count*3, len(X_anomaly)), replace=False)
+
+            X = [X_normal[i] for i in normal_indices] + [X_anomaly[i] for i in anomaly_indices]
+            y = [y_normal[i] for i in normal_indices] + [y_anomaly[i] for i in anomaly_indices]
+
+            # Shuffle the balanced dataset
+            combined = list(zip(X, y))
+            np.random.shuffle(combined)
+            X, y = zip(*combined)
+            X, y = list(X), list(y)
+
+            # Update class counts
+            class_counts = {0: len(normal_indices), 1: len(anomaly_indices)}
+    else:
+        # Just combine the sequences
+        X = X_normal + X_anomaly
+        y = y_normal + y_anomaly
+
+    print(f"Created {len(X)} sequences from {len(data)} data points")
+    print(f"Sequence length: {sequence_length}, Stride: {stride}")
+    print(f"Class distribution in sequences: {class_counts}")
+
     return X, y
 
 
@@ -399,7 +533,7 @@ def train_rnn_with_k_fold_cv(X_sequences, y_sequences, rnn_cell="LSTM", is_verbo
     return best_params
 
 
-def prepare_datasets(dataset_ids=None, window_size_sec=0.5, stride_size_sec=0.2):
+def prepare_datasets(dataset_ids=None, window_size_msec=20, stride_size_msec=50):
     if dataset_ids is None:
         dataset_ids = [0, 1, 2, 3, 4]
 
@@ -435,8 +569,12 @@ def prepare_datasets(dataset_ids=None, window_size_sec=0.5, stride_size_sec=0.2)
     X = X.drop(columns=['source_port_label_normalized'])
     X = X.drop(columns=['destination_port_label_normalized'])
 
+    feature_mean = X.mean(axis=0)  # Series of length n_features
+    feature_std = X.std(axis=0) + 1e-6  # Series of length n_features
+    X_norm = (X - feature_mean) / feature_std  # DataFrame, same shape as X
+
     X_train_val, X_test, y_train_val, y_test = train_test_split(
-        X, y, test_size=TEST_RATIO,
+        X_norm, y, test_size=TEST_RATIO,
         stratify=y,  # random_state=RANDOM_STATE
     )
     X_train, X_val, y_train, y_val = train_test_split(
@@ -448,19 +586,22 @@ def prepare_datasets(dataset_ids=None, window_size_sec=0.5, stride_size_sec=0.2)
     training_ds['label'] = y_train
     if 'timestamp' not in training_ds.columns:
         training_ds['timestamp'] = np.arange(len(training_ds))
-    X_train_seq, y_train_seq = create_time_window_sequences(training_ds, window_size_sec, stride_size_sec)
+    # X_train_seq, y_train_seq = create_time_window_sequences(training_ds, window_size_msec, stride_size_msec)
+    X_train_seq, y_train_seq = create_fixed_length_sequences(training_ds, sequence_length=10, stride=1, max_sequences=1000000, balance_classes=False)
 
     validation_ds = pd.DataFrame(X_val)
     validation_ds['label'] = y_val
     if 'timestamp' not in validation_ds.columns:
         validation_ds['timestamp'] = np.arange(len(validation_ds))
-    X_val_seq, y_val_seq = create_time_window_sequences(validation_ds, window_size_sec, stride_size_sec)
+    # X_val_seq, y_val_seq = create_time_window_sequences(validation_ds, window_size_msec, stride_size_msec)
+    X_val_seq, y_val_seq = create_fixed_length_sequences(validation_ds, sequence_length=10, stride=1, max_sequences=1000000, balance_classes=False)
 
     test_ds = pd.DataFrame(X_test)
     test_ds['label'] = y_test
     if 'timestamp' not in test_ds.columns:
         test_ds['timestamp'] = np.arange(len(test_ds))
-    X_test_seq, y_test_seq = create_time_window_sequences(test_ds, window_size_sec, stride_size_sec)
+    # X_test_seq, y_test_seq = create_time_window_sequences(test_ds, window_size_msec, stride_size_msec)
+    X_test_seq, y_test_seq = create_fixed_length_sequences(test_ds, sequence_length=10, stride=1, max_sequences=1000000, balance_classes=False)
 
     return X_train_seq, y_train_seq, X_val_seq, y_val_seq, X_test_seq, y_test_seq
 
@@ -526,9 +667,17 @@ if __name__ == '__main__':
     X = X.drop(columns=['source_port_label_normalized'])
     X = X.drop(columns=['destination_port_label_normalized'])
 
+    feature_mean = X.mean(axis=0)  # Series of length n_features
+    feature_std = X.std(axis=0) + 1e-6  # Series of length n_features
+    X_norm = (X - feature_mean) / feature_std  # DataFrame, same shape as X
+
+    print(f"Data shape X: {X.shape}, Labels shape: {y.shape}")
+    print(f"Data shape X_norm: {X_norm.shape}, Labels shape: {y.shape}")
+    print("Continue....")
+
     for _ in range(TRIALS):
         X_train_val, X_test, y_train_val, y_test = train_test_split(
-            X, y, test_size=TEST_RATIO,
+            X_norm, y, test_size=TEST_RATIO,
             stratify=y, #random_state=RANDOM_STATE
         )
         # rf = train_random_forest_with_k_fold_cv(
@@ -555,11 +704,11 @@ if __name__ == '__main__':
         # print(report_cm_results(cm))
 
         # Sequence creation for RNN
-        window_size = 2  # seconds
-        stride_size = 1   # seconds
+        window_size = 1  # seconds
+        stride_size = 0.5   # seconds
 
         # Create a data frame with features and label that includes timestamp
-        df_with_timestamp = pd.DataFrame(X)
+        df_with_timestamp = pd.DataFrame(X_norm)
         df_with_timestamp['label'] = y
 
         # Make sure timestamp is in the right format
@@ -574,7 +723,9 @@ if __name__ == '__main__':
                 df_with_timestamp['timestamp'] = np.arange(len(df_with_timestamp))
 
         # Now create sequences with the properly formatted dataframe
-        X_sequences, y_sequences = create_time_window_sequences(df_with_timestamp, window_size, stride_size)
+        X_sequences, y_sequences = create_fixed_length_sequences(df_with_timestamp, 100, 15, max_sequences=1000000)
+        print(X_sequences[:10])
+        print(X_sequences[-10:])
 
         # Train RNN with K-Fold CV
         best_rnn_params = train_rnn_with_k_fold_cv(X_sequences, y_sequences, rnn_cell="RNN", is_verbose=True)
@@ -614,6 +765,6 @@ if __name__ == '__main__':
         )
 
         # Evaluate final model
-        f1_score, report = evaluate_rnn_model(final_rnn_model, X_test_sequences, y_test_sequences)
+        _, f1_score, report = evaluate_rnn_model(final_rnn_model, X_test_sequences, y_test_sequences)
         print(f"Final Model F1 Score: {f1_score:.4f}")
         print(report)

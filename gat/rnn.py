@@ -61,6 +61,19 @@ class SequenceDataset(torch.utils.data.Dataset):
         return seq, label, seq.shape[0]      # length used later
 
 
+# ---- Normalisation helpers -----------------------------------------------
+def compute_stats(seqs):
+    """Return feature-wise mean/std over *all frames* in a list of sequences"""
+    all_frames = np.concatenate(seqs, axis=0)          # [T_total, F]
+    mean = all_frames.mean(0, keepdims=True)
+    std  = all_frames.std(0,  keepdims=True) + 1e-6
+    return mean.astype(np.float32), std.astype(np.float32)
+
+def apply_norm(seqs, mean, std):
+    return [(seq - mean) / std for seq in seqs]
+# ---------------------------------------------------------------------------
+
+
 class NetworkTrafficRNN(torch.nn.Module):
     def __init__(
         self,
@@ -129,14 +142,21 @@ class NetworkTrafficRNN(torch.nn.Module):
         return out
 
     def train_rnn(self, X_train, y_train, X_val, y_val):
-        # Create DataLoader
+        # Compute class weights
+        y_train_np = np.array(y_train)
+        class_sample_count = np.array([np.sum(y_train_np == t) for t in np.unique(y_train_np)])
+        class_weights = 1. / (class_sample_count + 1e-6)
+        class_weights = torch.tensor(class_weights, dtype=torch.float32)
+        print(f"Class weights: {class_weights}")
+        print(f"Train class distribution: {Counter(y_train_np)}")
+        print(f"Val class distribution: {Counter(np.array(y_val))}")
+
         train_loader = DataLoader(
             SequenceDataset(X_train, y_train),
             batch_size=self.batch_size,
             shuffle=True,
             collate_fn=pad_collate_fn
         )
-
         val_loader = DataLoader(
             SequenceDataset(X_val, y_val),
             batch_size=self.batch_size,
@@ -145,7 +165,6 @@ class NetworkTrafficRNN(torch.nn.Module):
         )
 
         # Loss and optimizer
-        # criterion = torch.nn.CrossEntropyLoss(weight=class_weights)
         criterion = torch.nn.CrossEntropyLoss()
         optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
 
@@ -154,49 +173,45 @@ class NetworkTrafficRNN(torch.nn.Module):
         patience_counter = 0
 
         for epoch in range(self.num_epochs):
-            # Training phase
             self.train()
             train_loss = 0.0
             for padded_X, labels, lengths in train_loader:
-                # inputs, labels = inputs.to(self.device), labels.to(self.device)
                 optimizer.zero_grad()
                 logits = self(padded_X, lengths)
                 loss = criterion(logits, labels)
-                #outputs = model(inputs)
-                #loss = criterion(outputs, labels)
                 loss.backward()
+                # torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1.0)  # NEW
                 optimizer.step()
-
                 train_loss += loss.item() * labels.size(0)
 
-            # Validation phase
             self.eval()
             val_loss = 0.0
-            correct = 0
-            total = 0
             predicted_list = []
             correct_list = []
             with torch.no_grad():
                 for padded_X, labels, lengths in val_loader:
-                    # inputs, labels = inputs.to(self.device), labels.to(self.device)
                     logits = self(padded_X, lengths)
                     loss = criterion(logits, labels)
                     val_loss += loss.item() * labels.size(0)
-
                     _, predicted = torch.max(logits, 1)
-                    total += labels.size(0)
-                    correct += (predicted == labels).sum().item()
                     predicted_list.append(predicted.cpu())
                     correct_list.append(labels.cpu())
 
-            # Calculate metrics
+            print("Predicted Counts: ", Counter(torch.cat(predicted_list).numpy()))
+            # print("Correct Counts: ", Counter(torch.cat(correct_list).numpy()))
+
             train_loss = train_loss / len(train_loader.dataset)
             val_loss = val_loss / len(val_loader.dataset)
 
             # Early stopping check
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
-                best_f1_score = calculate_f1_score(correct_list, predicted_list, average='weighted'),
+                try:
+                    best_f1_score = calculate_f1_score(torch.cat(correct_list), torch.cat(predicted_list), average='weighted')
+                except ValueError:
+                    y_true = torch.cat(correct_list).numpy()
+                    y_pred = torch.cat(predicted_list).numpy()
+                    best_f1_score = calculate_f1_score(y_true, y_pred, average='weighted')
                 patience_counter = 0
                 torch.save(self.state_dict(), '../rnn_best_model.pth')  # Save best model
             else:
@@ -211,7 +226,8 @@ class NetworkTrafficRNN(torch.nn.Module):
 
     def evaluate_rnn(self, X, y):
         self.eval()
-
+        y_np = np.array(y)
+        print(f"Test class distribution: {Counter(y_np)}")
         criterion = torch.nn.CrossEntropyLoss()
         test_loader = DataLoader(
             SequenceDataset(X, y),
@@ -219,7 +235,6 @@ class NetworkTrafficRNN(torch.nn.Module):
             shuffle=False,
             collate_fn=pad_collate_fn,
         )
-
         prediction_list, label_list = [], []
         test_loss = 0.0
         with torch.no_grad():
@@ -227,13 +242,11 @@ class NetworkTrafficRNN(torch.nn.Module):
                 logits = self(padded_X, lengths)
                 prediction_list.append(torch.argmax(logits, 1).cpu())
                 label_list.append(labels.cpu())
-
                 loss = criterion(logits, labels)
                 test_loss += loss.item() * labels.size(0)
-
         y_true = torch.cat(label_list)
         y_pred = torch.cat(prediction_list)
-
+        print("Test Predicted Counts: ", Counter(y_pred.numpy()))
         return (
             test_loss / len(test_loader.dataset),
             calculate_f1_score(y_true, y_pred, average='weighted'),

@@ -121,9 +121,10 @@ class FlowerClientRNN(NumPyClient):
         # self.emissions = emissions if not math.isnan(emissions) else emissions
         print("TRAINING DONE!")
         print("F1 Score:", f1_score)
+        f1_score = f1_score[0] if isinstance(f1_score, tuple) else f1_score
 
         metrics_to_aggregate = {
-            "f1_score": f1_score[0],
+            "training_f1_score": f1_score,
             "carbon": emissions
         }
         print("METRICS OF CLIENT: ", metrics_to_aggregate)
@@ -141,7 +142,7 @@ class FlowerClientRNN(NumPyClient):
         loss, f1, report = evaluate_model_rnn(self.net, self.X_test_seq, self.y_test_seq)
         print("METRICS OF CLIENT:")
         print(report)
-        return loss, len(self.X_test_seq), {"f1_score": f1}
+        return loss, len(self.X_test_seq), {"testing_f1_score": f1}
 
 
 def construct_flower_client(client_id, context):

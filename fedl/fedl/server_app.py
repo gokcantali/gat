@@ -33,9 +33,9 @@ def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
     return aggregated_metrics
 
 
-NUM_ROUNDS = 5
+NUM_ROUNDS = 10
 METHOD = "simple_avg"
-TRIAL = "23th"
+TRIAL = "1st"
 ML_MODEL = "RNN"  # or "GCN"
 
 EXPERIMENT_NAME = f"{ML_MODEL}-5Nodes-{NUM_ROUNDS}Rounds-{METHOD}"
@@ -69,7 +69,7 @@ def training_metrics_aggregation(metrics: List[Tuple[int, Metrics]]) -> Metrics:
                 other_metrics_weighted_total[field] += num_examples * m[field]
         total_samples += num_examples
 
-    with open("carbon_emissions.txt", "a") as f:
+    with open(f"carbon_emissions_{ML_MODEL}.txt", "a") as f:
         f.write(f"{total_emission}\n")
 
     other_metrics_weighted_average = {
@@ -151,7 +151,7 @@ def server_fn(context: Context) -> ServerAppComponents:
 
     # add a new subheader in the carbon emission file
     # before the next simulation starts
-    with open("carbon_emissions.txt", "a") as f:
+    with open(f"carbon_emissions_{ML_MODEL}.txt", "a") as f:
         subheader = "\n====== "
         subheader += "WITHOUT OPTIMIZATION" if METHOD == 'non_cf' else "WITH OPTIMIZATION"
         subheader += f" - {NUM_ROUNDS} Rounds - {CF_METHODS[METHOD]} Algorithm - {TRIAL} TRIAL"
