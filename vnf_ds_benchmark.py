@@ -16,8 +16,8 @@ from gat.vnf_ds_preprocesser import preprocess_df, preprocess_X, preprocess_y
 from gat.rnn import NetworkTrafficRNN, pad_collate_fn, SequenceDataset, subset
 
 
-TEST_RATIO = 0.20
-VALIDATION_RATIO = 0.20
+TEST_RATIO = 0.10
+VALIDATION_RATIO = 0.10
 TRIALS = 10
 
 
@@ -349,10 +349,13 @@ def create_fixed_length_sequences(data, sequence_length=10, stride=5, max_sequen
         window_features = features.iloc[i:i+sequence_length].values
         window_labels = labels.iloc[i:i+sequence_length].values
 
-        # Determine sequence label
-        # If at least 30% of points in window are anomalies (label 1), label sequence as anomaly
         anomaly_ratio = np.sum(window_labels == 1) / len(window_labels)
-        if anomaly_ratio >= 0.1:
+
+        # Determine the anomaly ratio threshold by the proportion of anomalies in the dataset
+        dataset_anomaly_ratio = np.sum(labels == 1) / len(labels)
+
+        # Determine sequence label
+        if anomaly_ratio > dataset_anomaly_ratio:
             sequence_label = 1
             X_anomaly.append(window_features)
             y_anomaly.append(sequence_label)
@@ -587,21 +590,21 @@ def prepare_datasets(dataset_ids=None, window_size_msec=20, stride_size_msec=50)
     if 'timestamp' not in training_ds.columns:
         training_ds['timestamp'] = np.arange(len(training_ds))
     # X_train_seq, y_train_seq = create_time_window_sequences(training_ds, window_size_msec, stride_size_msec)
-    X_train_seq, y_train_seq = create_fixed_length_sequences(training_ds, sequence_length=1, stride=1, max_sequences=1000000, balance_classes=False)
+    X_train_seq, y_train_seq = create_fixed_length_sequences(training_ds, sequence_length=1, stride=1, max_sequences=10000000, balance_classes=False)
 
     validation_ds = pd.DataFrame(X_val)
     validation_ds['label'] = y_val
     if 'timestamp' not in validation_ds.columns:
         validation_ds['timestamp'] = np.arange(len(validation_ds))
     # X_val_seq, y_val_seq = create_time_window_sequences(validation_ds, window_size_msec, stride_size_msec)
-    X_val_seq, y_val_seq = create_fixed_length_sequences(validation_ds, sequence_length=1, stride=1, max_sequences=1000000, balance_classes=False)
+    X_val_seq, y_val_seq = create_fixed_length_sequences(validation_ds, sequence_length=1, stride=1, max_sequences=10000000, balance_classes=False)
 
     test_ds = pd.DataFrame(X_test)
     test_ds['label'] = y_test
     if 'timestamp' not in test_ds.columns:
         test_ds['timestamp'] = np.arange(len(test_ds))
     # X_test_seq, y_test_seq = create_time_window_sequences(test_ds, window_size_msec, stride_size_msec)
-    X_test_seq, y_test_seq = create_fixed_length_sequences(test_ds, sequence_length=1, stride=1, max_sequences=1000000, balance_classes=False)
+    X_test_seq, y_test_seq = create_fixed_length_sequences(test_ds, sequence_length=1, stride=1, max_sequences=10000000, balance_classes=False)
 
     return X_train_seq, y_train_seq, X_val_seq, y_val_seq, X_test_seq, y_test_seq
 
@@ -613,7 +616,7 @@ def initialize_model():
         hidden_size=64,
         num_layers=2,
         num_classes=2,  # Example number of classes, adjust as needed
-        cell_type="RNN",
+        cell_type="LSTM",
         dropout=0.05,
         hyperparams=None
     )
@@ -624,7 +627,7 @@ def train_model(model, X_train_seq, y_train_seq, X_val_seq, y_val_seq):
     if not X_train_seq or len(X_train_seq) == 0:
         raise ValueError("Empty training data")
 
-    return train_rnn_model(X_train_seq, y_train_seq, X_val_seq, y_val_seq, rnn_cell="RNN", ext_model=model)
+    return train_rnn_model(X_train_seq, y_train_seq, X_val_seq, y_val_seq, rnn_cell="LSTM", ext_model=model)
 
 
 def evaluate_model(model, X_test_seq, y_test_seq):

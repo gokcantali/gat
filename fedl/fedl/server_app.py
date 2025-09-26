@@ -33,9 +33,9 @@ def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
     return aggregated_metrics
 
 
-NUM_ROUNDS = 10
+NUM_ROUNDS = 30
 METHOD = "simple_avg"
-TRIAL = "1st"
+TRIAL = "01"
 ML_MODEL = "RNN"  # or "GCN"
 
 EXPERIMENT_NAME = f"{ML_MODEL}-5Nodes-{NUM_ROUNDS}Rounds-{METHOD}"

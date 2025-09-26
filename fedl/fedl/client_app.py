@@ -125,7 +125,8 @@ class FlowerClientRNN(NumPyClient):
 
         metrics_to_aggregate = {
             "training_f1_score": f1_score,
-            "carbon": emissions
+            "carbon": emissions,
+            "validation_loss": loss
         }
         print("METRICS OF CLIENT: ", metrics_to_aggregate)
 

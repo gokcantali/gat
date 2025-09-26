@@ -257,7 +257,8 @@ class NetworkTrafficRNN(torch.nn.Module):
     def set_parameters(self, parameters: List[np.ndarray], config, is_evaluate=False):
         if config is None:
             config = {}
-        params_dict = zip(self.state_dict().keys(), parameters)
+        keys = [k for k in self.state_dict().keys() if "bn" not in k]
+        params_dict = zip(keys, parameters)
         state_dict = OrderedDict({k: torch.Tensor(v) for k, v in params_dict})
         self.load_state_dict(state_dict, strict=True)
 
@@ -267,7 +268,7 @@ class NetworkTrafficRNN(torch.nn.Module):
             torch.save(state_dict, model_file_name)
 
     def get_parameters(self) -> List[np.ndarray]:
-        return [val.cpu().numpy() for _, val in self.state_dict().items()]
+        return [val.cpu().numpy() for name, val in self.state_dict().items() if "bn" not in name]
 
     @staticmethod
     def _construct_model_file_name(config):

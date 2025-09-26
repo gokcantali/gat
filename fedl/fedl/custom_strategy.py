@@ -2,15 +2,15 @@ import math
 # import random
 import traceback
 from logging import INFO, WARNING, ERROR
-from typing import Optional, Union
+from typing import Optional, Union, Dict
 
 import numpy as np
 import pandas as pd
-from flwr.common import FitIns, Parameters, log, GetPropertiesIns, FitRes, Scalar, EvaluateRes, parameters_to_ndarrays
+from flwr.common import FitIns, Parameters, log, FitRes, Scalar, EvaluateRes, parameters_to_ndarrays, GetPropertiesIns
 from flwr.server import SimpleClientManager
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.criterion import Criterion
-from flwr.server.strategy import FedAvg
+from flwr.server.strategy import FedProx
 from sklearn.linear_model import LinearRegression
 
 
@@ -104,17 +104,19 @@ class SimpleClientManagerWithPrioritizedSampling(SimpleClientManager):
         return [self.clients[cid] for cid in sampled_cids]
 
 
-class FedAvgCF(FedAvg):
+class FedAvgCF(FedProx):
     def __init__(
         self, alpha: float, window: int,
         method: str = "lin_reg", total_rounds: int = 60,
         trial: str = "First",
         log_params_and_metrics_fn: Optional[callable] = None,
+        proximal_mu: float = 0.2,
         **kwargs
     ):
-        super().__init__(**kwargs)
+        super().__init__(**kwargs, proximal_mu=proximal_mu)
         self.alpha = alpha
         self.window = window
+        self.cid_to_pid: Dict[str, str] = {}  # server-side cache: ClientProxy.cid -> partition-id
 
         if method not in CF_METHODS:
             raise Exception(f"Method: {method} not implemented!")
@@ -124,7 +126,36 @@ class FedAvgCF(FedAvg):
         self.trial = trial
         self.log_params_and_metrics_fn = log_params_and_metrics_fn
 
+        # emission mapping keyed by partition-id (when available), otherwise fallback to client cid
         self.emission_mapping: dict[str, dict[int, float]] = {}
+
+        # store selected participants per round as list of partition ids (or fallbacks)
+        self.selected_participants_per_round: dict[int, list[str]] = {}
+
+    def _prime_partition_map(self, client_manager: SimpleClientManagerWithPrioritizedSampling) -> None:
+        # Ask any clients we haven't seen yet for their properties
+        for cid, client in client_manager.all().items():
+            if cid in self.cid_to_pid:
+                continue
+            res = client.get_properties(
+                ins=GetPropertiesIns(config={}),
+                timeout=20,
+                group_id=None
+            )
+
+            # On the server, this returns a GetPropertiesRes-like object with .properties in Classic API
+            props = getattr(res, "properties", res)  # support both wrappers and raw dict
+            self.cid_to_pid[cid] = str(props["partition-id"])
+
+    def initialize_parameters(self, client_manager: SimpleClientManagerWithPrioritizedSampling) -> Parameters | None:
+        # Optional: prime once before round 1
+        initial_params = super().initialize_parameters(client_manager)
+
+        client_manager.wait_for(num_clients=5, timeout=20)
+        self._prime_partition_map(client_manager)
+        print(f"Client to Partition mapping: {self.cid_to_pid}")
+
+        return initial_params
 
     def aggregate_evaluate(
         self,
@@ -210,6 +241,25 @@ class FedAvgCF(FedAvg):
                         min_num_clients=min_num_clients,
                     )
 
+        # Record the selected participants using partition-id if available
+        selected_partition_ids = []
+        for client in clients:
+            partition_id = self.cid_to_pid[client.cid]
+            selected_partition_ids.append(partition_id)
+
+        # store in-memory mapping
+        self.selected_participants_per_round[server_round] = selected_partition_ids
+
+        # append to CSV for easy inspection / external logging
+        try:
+            csv_path = f"selected_participants_{self.method}_{self.trial}.csv"
+            with open(csv_path, "a") as f:
+                # write header if file newly created
+                # append line: round,partition1;partition2;...
+                f.write(f"{server_round},{','.join(map(str, selected_partition_ids))}\n")
+        except Exception:
+            log(WARNING, "Failed to persist selected participants to CSV.")
+
         # Return client/config pairs
         return [(client, fit_ins) for client in clients]
 
@@ -220,7 +270,8 @@ class FedAvgCF(FedAvg):
         failures: list[Union[tuple[ClientProxy, FitRes], BaseException]],
     ) -> tuple[Optional[Parameters], dict[str, Scalar]]:
         for client_proxy, fit_res in results:
-            cid = client_proxy.cid
+            # use partition id (preferred) as the key in emissions mapping
+            cid = getattr(client_proxy, "cid", None)
             if cid not in self.emission_mapping:
                 self.emission_mapping[cid] = {}
             carbon_emission = fit_res.metrics.get("carbon", -1.0)
