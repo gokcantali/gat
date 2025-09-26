@@ -100,7 +100,9 @@ class FlowerClientRNN(NumPyClient):
         self.y_test_seq = y_test_seq
 
     def get_properties(self, config: Config) -> dict[str, Scalar]:
-        return self.get_context().node_config
+        pid = self.get_context().node_config["partition-id"]
+        print("Get Properties called. Partition ID: ", pid)
+        return {"partition-id": pid}
 
     def get_parameters(self, config):
         return self.net.get_parameters()

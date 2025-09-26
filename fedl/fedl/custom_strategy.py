@@ -139,7 +139,7 @@ class FedAvgCF(FedProx):
                 continue
             res = client.get_properties(
                 ins=GetPropertiesIns(config={}),
-                timeout=20,
+                timeout=30,
                 group_id=None
             )
 
@@ -149,13 +149,12 @@ class FedAvgCF(FedProx):
 
     def initialize_parameters(self, client_manager: SimpleClientManagerWithPrioritizedSampling) -> Parameters | None:
         # Optional: prime once before round 1
-        initial_params = super().initialize_parameters(client_manager)
-
         client_manager.wait_for(num_clients=5, timeout=20)
+
         self._prime_partition_map(client_manager)
         print(f"Client to Partition mapping: {self.cid_to_pid}")
 
-        return initial_params
+        return super().initialize_parameters(client_manager)
 
     def aggregate_evaluate(
         self,
