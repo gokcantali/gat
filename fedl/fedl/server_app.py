@@ -33,9 +33,9 @@ def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
     return aggregated_metrics
 
 
-NUM_ROUNDS = 30
-METHOD = "simple_avg"
-TRIAL = "01"
+NUM_ROUNDS = 20
+METHOD = "non_cf"
+TRIAL = "100"
 ML_MODEL = "RNN"  # or "GCN"
 
 EXPERIMENT_NAME = f"{ML_MODEL}-5Nodes-{NUM_ROUNDS}Rounds-{METHOD}"
@@ -183,7 +183,7 @@ app = ServerApp(server_fn=server_fn)
 #     )
 #
 #     fit_workflow = SecAggPlusWorkflow(
-#         num_shares=context.run_config["num-shares"],
+#         =context.run_config["num-shares"],
 #         reconstruction_threshold=context.run_config["reconstruction-threshold"],
 #         max_weight=context.run_config["max-weight"],
 #     )

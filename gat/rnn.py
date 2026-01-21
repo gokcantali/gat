@@ -105,7 +105,8 @@ class NetworkTrafficRNN(torch.nn.Module):
         # Fully connected layer
         self.fc = torch.nn.Linear(
             hidden_size * (2 if is_bidirectional else 1),
-            num_classes
+            # num_classes
+            1 # for BCEWithLogitsLoss
         )
 
         # Dropout layer
@@ -119,7 +120,7 @@ class NetworkTrafficRNN(torch.nn.Module):
         if type(hyperparams) is dict:
             self.batch_size = hyperparams.get('batch_size', 32)
             self.learning_rate = hyperparams.get('learning_rate', 0.001)
-            self.num_epochs = hyperparams.get('num_epochs', 10)
+            self.num_epochs = hyperparams.get('num_epochs', 2)
             self.patience = hyperparams.get('patience', 3)
 
     def forward(self, x, lengths):
@@ -139,14 +140,15 @@ class NetworkTrafficRNN(torch.nn.Module):
 
         last = h_n[-1]  # [B, hidden * directions]
         out = self.fc(self.dropout(last))
+        out = out.squeeze(-1) # For BCEWithLogitsLoss
         return out
 
     def train_rnn(self, X_train, y_train, X_val, y_val):
         # Compute class weights
         y_train_np = np.array(y_train)
-        class_sample_count = np.array([np.sum(y_train_np == t) for t in np.unique(y_train_np)])
-        class_weights = 1. / (class_sample_count + 1e-6)
-        class_weights = torch.tensor(class_weights, dtype=torch.float32)
+        counts = np.bincount(y_train_np.astype(int), minlength=2)  # [count0, count1]
+        weights = 1.0 / (counts + 1e-6)
+        class_weights = torch.tensor(weights, dtype=torch.float32)
         print(f"Class weights: {class_weights}")
         print(f"Train class distribution: {Counter(y_train_np)}")
         print(f"Val class distribution: {Counter(np.array(y_val))}")
@@ -154,18 +156,21 @@ class NetworkTrafficRNN(torch.nn.Module):
         train_loader = DataLoader(
             SequenceDataset(X_train, y_train),
             batch_size=self.batch_size,
-            shuffle=True,
+            shuffle=False,
             collate_fn=pad_collate_fn
         )
         val_loader = DataLoader(
             SequenceDataset(X_val, y_val),
             batch_size=self.batch_size,
-            shuffle=True,
+            shuffle=False,
             collate_fn=pad_collate_fn
         )
 
         # Loss and optimizer
-        criterion = torch.nn.CrossEntropyLoss()
+        pos = np.sum(y_train_np == 1)
+        neg = np.sum(y_train_np == 0)
+        pos_weight = torch.tensor([neg / (pos + 1e-6)])
+        criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
         optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
 
         best_val_loss = float('inf')
@@ -179,9 +184,9 @@ class NetworkTrafficRNN(torch.nn.Module):
             for padded_X, labels, lengths in train_loader:
                 optimizer.zero_grad()
                 logits = self(padded_X, lengths)
-                loss = criterion(logits, labels)
+                loss = criterion(logits, labels.float())
                 loss.backward()
-                # torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1.0)  # NEW
+                torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1.0)  # NEW
                 optimizer.step()
                 train_loss += loss.item() * labels.size(0)
 
@@ -192,11 +197,12 @@ class NetworkTrafficRNN(torch.nn.Module):
             with torch.no_grad():
                 for padded_X, labels, lengths in val_loader:
                     logits = self(padded_X, lengths)
-                    loss = criterion(logits, labels)
+                    loss = criterion(logits, labels.float())
                     val_loss += loss.item() * labels.size(0)
-                    _, predicted = torch.max(logits, 1)
-                    predicted_list.append(predicted.cpu())
-                    correct_list.append(labels.cpu())
+                    probs = torch.sigmoid(logits)
+                    preds = (probs >= 0.5).long().cpu()
+                    predicted_list.append(preds)
+                    correct_list.append(labels.float().cpu())
 
             print("Predicted Counts: ", Counter(torch.cat(predicted_list).numpy()))
             # print("Correct Counts: ", Counter(torch.cat(correct_list).numpy()))
@@ -229,7 +235,7 @@ class NetworkTrafficRNN(torch.nn.Module):
         self.eval()
         y_np = np.array(y)
         print(f"Test class distribution: {Counter(y_np)}")
-        criterion = torch.nn.CrossEntropyLoss()
+        criterion = torch.nn.BCEWithLogitsLoss()
         test_loader = DataLoader(
             SequenceDataset(X, y),
             batch_size=self.batch_size,
@@ -241,13 +247,17 @@ class NetworkTrafficRNN(torch.nn.Module):
         with torch.no_grad():
             for padded_X, labels, lengths in test_loader:
                 logits = self(padded_X, lengths)
-                prediction_list.append(torch.argmax(logits, 1).cpu())
-                label_list.append(labels.cpu())
-                loss = criterion(logits, labels)
+                loss = criterion(logits, labels.float())
                 test_loss += loss.item() * labels.size(0)
+
+                probs = torch.sigmoid(logits)
+                preds = (probs >= 0.5).long().cpu()
+                prediction_list.append(preds)
+                label_list.append(labels.float().cpu())
         y_true = torch.cat(label_list)
         y_pred = torch.cat(prediction_list)
         print("Test Predicted Counts: ", Counter(y_pred.numpy()))
+
         return (
             test_loss / len(test_loader.dataset),
             calculate_f1_score(y_true, y_pred, average='weighted'),
@@ -289,9 +299,9 @@ def create_hyper_param_space():
     from itertools import product
 
     hyper_param_space = {
-        "learning_rate": [0.001],# 0.01, 0.05],
+        "learning_rate": [0.01],# 0.01, 0.05],
         "batch_size": [32, 64],# 128],
-        "num_epochs": [20],#[10, 20],# 30],
+        "num_epochs": [2],#[10, 20],# 30],
         "patience": [3],# 5, 7],
         "num_layers": [2,],# 3],
         "hidden_size": [64, 128],# 256],

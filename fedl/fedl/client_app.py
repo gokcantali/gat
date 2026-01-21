@@ -1,4 +1,5 @@
 import math
+import time
 from dataclasses import asdict
 from pathlib import Path
 
@@ -13,7 +14,7 @@ from torch import load
 from torch_geometric.loader import RandomNodeLoader
 
 from run import initialize_gcn_model
-
+from vnf_ds_benchmark import get_sequences
 
 TEST_SIZE = 0.10
 VALIDATION_SIZE = 0.10
@@ -117,9 +118,12 @@ class FlowerClientRNN(NumPyClient):
         )
         self.net.set_parameters(parameters, config, is_evaluate=False)
         tracker.start()
+        start_time_train_rnn = time.time()
         new_model, loss, f1_score = train_model_rnn(
             self.net, self.X_train_seq, self.y_train_seq, self.X_val_seq, self.y_val_seq
         )
+        end_time_train_rnn = time.time()
+        print("Client Training Time: ", end_time_train_rnn - start_time_train_rnn)
         emissions = tracker.stop()
         # self.emissions = emissions if not math.isnan(emissions) else emissions
         print("TRAINING DONE!")
@@ -192,15 +196,31 @@ def construct_flower_client(client_id, context):
 
 
 def construct_flower_client_rnn_vnf_datasets(client_id, context):
-    from vnf_ds_benchmark import prepare_datasets, initialize_model
+    from vnf_ds_benchmark import prepare_sequences, initialize_model
+    print("Constructing Flower Client for VNF dataset - with client id: ", client_id)
 
     net = initialize_model()
-    X_train, y_train, X_val, y_val, X_test, y_test = prepare_datasets(
-        dataset_ids=[client_id],
-    )
+
+    df_dict = get_sequences(dataset_id=client_id)
+    all_df_dict = get_sequences(dataset_id=-1) # sequences of ALL datasets
+    # check if datasets already exist
+    if df_dict is None:
+        # prepare datasets
+        start_time_prepare_ds = time.time()
+        df_dict = prepare_sequences(
+            dataset_ids=[client_id],
+        )
+        end_time_prepare_ds = time.time()
+        print("Dataset Preparation Time: ", end_time_prepare_ds - start_time_prepare_ds)
 
     flower_client = FlowerClientRNN(
-        net, X_train, y_train, X_val, y_val, X_test, y_test
+        net,
+        df_dict['X_train'],
+        df_dict['y_train'],
+        df_dict['X_val'],
+        df_dict['y_val'],
+        all_df_dict['X_test'] if all_df_dict is not None else df_dict['X_test'],
+        all_df_dict['y_test'] if all_df_dict is not None else df_dict['y_test']
     )
     flower_client.set_context(context)
     return flower_client.to_client()

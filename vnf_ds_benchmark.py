@@ -16,6 +16,7 @@ from gat.vnf_ds_preprocesser import preprocess_df, preprocess_X, preprocess_y
 from gat.rnn import NetworkTrafficRNN, pad_collate_fn, SequenceDataset, subset
 
 
+RANDOM_STATE = 56
 TEST_RATIO = 0.10
 VALIDATION_RATIO = 0.10
 TRIALS = 10
@@ -249,7 +250,7 @@ def create_time_window_sequences(data, window_seconds=0.001, stride_seconds=0.00
         time_scale = 0.001
         print("Detected millisecond timestamps - adjusting window scale")
 
-    # Adjust window and stride to the detected time scale
+    # Adjust window and stride to the detected timescale
     adjusted_window = window_seconds / time_scale
     adjusted_stride = stride_seconds / time_scale
 
@@ -378,7 +379,7 @@ def create_fixed_length_sequences(data, sequence_length=10, stride=5, max_sequen
             y = y_normal + y_anomaly
         else:
             # Randomly select min_class_count sequences from each class
-            np.random.seed(42)  # For reproducibility
+            np.random.seed(RANDOM_STATE)  # For reproducibility
             normal_indices = np.random.choice(len(X_normal), min(min_class_count*3, len(X_normal)), replace=False)
             anomaly_indices = np.random.choice(len(X_anomaly), min(min_class_count*3, len(X_anomaly)), replace=False)
 
@@ -407,7 +408,7 @@ def create_fixed_length_sequences(data, sequence_length=10, stride=5, max_sequen
 
 def train_rnn_model(X_train, y_train, X_val, y_val, rnn_cell="LSTM", hyperparams=None, ext_model=None):
     """Train an RNN model on the VNF data"""
-    if not X_train or len(X_train) == 0:
+    if len(X_train) == 0:
         raise ValueError("Empty training data")
 
     if hyperparams is None:
@@ -454,7 +455,7 @@ def train_rnn_with_k_fold_cv(X_sequences, y_sequences, rnn_cell="LSTM", is_verbo
     n_splits = int((1 - TEST_RATIO) / VALIDATION_RATIO)
 
     start_time = time.time()
-    skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
+    skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=RANDOM_STATE)
 
     best_score = 0.0
     best_params = None
@@ -536,10 +537,37 @@ def train_rnn_with_k_fold_cv(X_sequences, y_sequences, rnn_cell="LSTM", is_verbo
     return best_params
 
 
-def prepare_datasets(dataset_ids=None, window_size_msec=20, stride_size_msec=50):
-    if dataset_ids is None:
-        dataset_ids = [0, 1, 2, 3, 4]
+def get_sequences(dataset_id=-1):
+    datasets = {
+        -1: "vALL",
+        0: "vIDS",
+        1: "vDNS",
+        2: "vLB",
+        3: "vProxy",
+        4: "vRouter_vFW"
+    }
+    output_filename_base = datasets.get(dataset_id, "vALL")
+    path = Path(f"data/VNFCyberData/{output_filename_base}_sequences.npz")
 
+    if not path.exists():
+        return None
+
+    loaded_sequences = np.load(path, allow_pickle=False)
+    return {
+        "X_train": loaded_sequences["X_train"],
+        "y_train": loaded_sequences["y_train"],
+        "X_val": loaded_sequences["X_val"],
+        "y_val": loaded_sequences["y_val"],
+        "X_test": loaded_sequences["X_test"],
+        "y_test": loaded_sequences["y_test"]
+    }
+
+
+def prepare_sequences(
+    dataset_ids=None,
+    window_size_msec=20,
+    stride_size_msec=50,
+):
     datasets = {
         0: "vIDS.csv",
         1: "vDNS.csv",
@@ -547,6 +575,14 @@ def prepare_datasets(dataset_ids=None, window_size_msec=20, stride_size_msec=50)
         3: "vProxy.csv",
         4: "vRouter_vFW.csv"
     }
+
+    output_sequence_filename_base = "vALL"
+    if dataset_ids is None:
+        dataset_ids = [0, 1, 2, 3, 4]
+    else:
+        output_sequence_filename_base = "_".join(
+            [datasets[ind].split('.csv')[0] for ind in dataset_ids]
+        )
 
     df = pd.DataFrame()
     for ds_id in dataset_ids:
@@ -578,11 +614,11 @@ def prepare_datasets(dataset_ids=None, window_size_msec=20, stride_size_msec=50)
 
     X_train_val, X_test, y_train_val, y_test = train_test_split(
         X_norm, y, test_size=TEST_RATIO,
-        stratify=y,  # random_state=RANDOM_STATE
+        stratify=y,  random_state=RANDOM_STATE
     )
     X_train, X_val, y_train, y_val = train_test_split(
         X_train_val, y_train_val, test_size=VALIDATION_RATIO/(1 - TEST_RATIO),
-        stratify=y_train_val,  # random_state=RANDOM_STATE
+        stratify=y_train_val,  random_state=RANDOM_STATE
     )
 
     training_ds = pd.DataFrame(X_train)
@@ -591,6 +627,11 @@ def prepare_datasets(dataset_ids=None, window_size_msec=20, stride_size_msec=50)
         training_ds['timestamp'] = np.arange(len(training_ds))
     # X_train_seq, y_train_seq = create_time_window_sequences(training_ds, window_size_msec, stride_size_msec)
     X_train_seq, y_train_seq = create_fixed_length_sequences(training_ds, sequence_length=1, stride=1, max_sequences=10000000, balance_classes=False)
+    # # create a CSV file for training_ds using X_train_seq and y_train_seq
+    # print(X_train_seq)
+    # training_ds_seq = pd.DataFrame(X_train_seq)
+    # training_ds_seq['label'] = y_train_seq
+    # training_ds_seq.to_csv(f"{output_filename_base}_train_seq.csv", index=False)
 
     validation_ds = pd.DataFrame(X_val)
     validation_ds['label'] = y_val
@@ -598,6 +639,10 @@ def prepare_datasets(dataset_ids=None, window_size_msec=20, stride_size_msec=50)
         validation_ds['timestamp'] = np.arange(len(validation_ds))
     # X_val_seq, y_val_seq = create_time_window_sequences(validation_ds, window_size_msec, stride_size_msec)
     X_val_seq, y_val_seq = create_fixed_length_sequences(validation_ds, sequence_length=1, stride=1, max_sequences=10000000, balance_classes=False)
+    # # create a CSV file for val_ds using X_val_seq and y_val_seq
+    # val_ds_seq = pd.DataFrame(X_val_seq)
+    # val_ds_seq['label'] = y_val_seq
+    # val_ds_seq.to_csv(f"{output_filename_base}_val_seq.csv", index=False)
 
     test_ds = pd.DataFrame(X_test)
     test_ds['label'] = y_test
@@ -605,8 +650,29 @@ def prepare_datasets(dataset_ids=None, window_size_msec=20, stride_size_msec=50)
         test_ds['timestamp'] = np.arange(len(test_ds))
     # X_test_seq, y_test_seq = create_time_window_sequences(test_ds, window_size_msec, stride_size_msec)
     X_test_seq, y_test_seq = create_fixed_length_sequences(test_ds, sequence_length=1, stride=1, max_sequences=10000000, balance_classes=False)
+    # # create a CSV file for test_ds using X_test_seq and y_test_seq
+    # test_ds_seq = pd.DataFrame(X_test_seq)
+    # test_ds_seq['label'] = y_test_seq
+    # test_ds_seq.to_csv(f"{output_filename_base}_test_seq.csv", index=False)
 
-    return X_train_seq, y_train_seq, X_val_seq, y_val_seq, X_test_seq, y_test_seq
+    np.savez_compressed(
+        f"data/VNFCyberData/{output_sequence_filename_base}_sequences.npz",
+        X_train=X_train_seq,
+        y_train=y_train_seq,
+        X_val=X_val_seq,
+        y_val=y_val_seq,
+        X_test=X_test_seq,
+        y_test=y_test_seq
+    )
+
+    return {
+        "X_train": X_train_seq,
+        "y_train": y_train_seq,
+        "X_val": X_val_seq,
+        "y_val": y_val_seq,
+        "X_test": X_test_seq,
+        "y_test": y_test_seq
+    }
 
 
 def initialize_model():
@@ -624,7 +690,7 @@ def initialize_model():
 
 def train_model(model, X_train_seq, y_train_seq, X_val_seq, y_val_seq):
     """Train the RNN model"""
-    if not X_train_seq or len(X_train_seq) == 0:
+    if len(X_train_seq) == 0:
         raise ValueError("Empty training data")
 
     return train_rnn_model(X_train_seq, y_train_seq, X_val_seq, y_val_seq, rnn_cell="LSTM", ext_model=model)
@@ -632,7 +698,7 @@ def train_model(model, X_train_seq, y_train_seq, X_val_seq, y_val_seq):
 
 def evaluate_model(model, X_test_seq, y_test_seq):
     """Evaluate the RNN model"""
-    if not X_test_seq or len(X_test_seq) == 0:
+    if len(X_test_seq) == 0:
         raise ValueError("Empty test data")
 
     return evaluate_rnn_model(model, X_test_seq, y_test_seq, ext_model=model)

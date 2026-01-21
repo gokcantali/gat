@@ -6,7 +6,8 @@ from typing import Optional, Union, Dict
 
 import numpy as np
 import pandas as pd
-from flwr.common import FitIns, Parameters, log, FitRes, Scalar, EvaluateRes, parameters_to_ndarrays, GetPropertiesIns
+from flwr.common import FitIns, Parameters, log, FitRes, Scalar, EvaluateRes, \
+    parameters_to_ndarrays, GetPropertiesIns, NDArrays, ndarrays_to_parameters
 from flwr.server import SimpleClientManager
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.criterion import Criterion
@@ -110,7 +111,7 @@ class FedAvgCF(FedProx):
         method: str = "lin_reg", total_rounds: int = 60,
         trial: str = "First",
         log_params_and_metrics_fn: Optional[callable] = None,
-        proximal_mu: float = 0.2,
+        proximal_mu: float = 0.05,
         **kwargs
     ):
         super().__init__(**kwargs, proximal_mu=proximal_mu)
@@ -131,6 +132,11 @@ class FedAvgCF(FedProx):
 
         # store selected participants per round as list of partition ids (or fallbacks)
         self.selected_participants_per_round: dict[int, list[str]] = {}
+
+        self.beta = 0.85         # momentum coefficient
+        self.server_lr = 0.3     # step size for applying momentum update
+        self._velocity: Optional[NDArrays] = None
+        self.previous_parameters: Optional[Parameters] = None
 
     def _prime_partition_map(self, client_manager: SimpleClientManagerWithPrioritizedSampling) -> None:
         # Ask any clients we haven't seen yet for their properties
@@ -279,13 +285,39 @@ class FedAvgCF(FedProx):
         params_agg, metrics_agg = super().aggregate_fit(
             server_round=server_round, results=results, failures=failures
         )
+        if params_agg is None:
+            return None, metrics_agg
+
+        # Need current (pre-round) global weights to compute delta
+        if self.previous_parameters is None:
+            # Fallback: no momentum possible without previous params
+            self.previous_parameters = params_agg
+            params_agg_with_momentum = params_agg
+        else:
+            w_prev = parameters_to_ndarrays(self.previous_parameters)
+            w_agg = parameters_to_ndarrays(params_agg)
+
+            # Compute aggregated delta
+            delta = [wa - wp for wa, wp in zip(w_agg, w_prev)]
+
+            # Init velocity on first use
+            if self._velocity is None:
+                self._velocity = [d.copy() for d in delta]
+
+            # Momentum update: v = beta*v + delta
+            self._velocity = [self.beta * v + d for v, d in zip(self._velocity, delta)]
+
+            # Apply to weights: w_new = w_prev + server_lr * v
+            w_new = [wp + self.server_lr * v for wp, v in zip(w_prev, self._velocity)]
+
+            params_agg_with_momentum = ndarrays_to_parameters(w_new)
 
         if self.log_params_and_metrics_fn:
             self.log_params_and_metrics_fn(
-                parameters_to_ndarrays(params_agg), metrics_agg
+                parameters_to_ndarrays(params_agg_with_momentum), metrics_agg
             )
 
-        return params_agg, metrics_agg
+        return params_agg_with_momentum, metrics_agg
 
     def _calculate_carbon_based_priorities(self):
         priorities = {}
