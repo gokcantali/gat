@@ -3,10 +3,11 @@ import warnings
 from collections import Counter, OrderedDict
 from typing import List
 
-from sklearn.metrics import f1_score, classification_report
+from sklearn.metrics import f1_score, classification_report, roc_auc_score, average_precision_score, roc_curve
 
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.preprocessing import label_binarize
 from sklearn.svm import SVC
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -105,8 +106,7 @@ class NetworkTrafficRNN(torch.nn.Module):
         # Fully connected layer
         self.fc = torch.nn.Linear(
             hidden_size * (2 if is_bidirectional else 1),
-            # num_classes
-            1 # for BCEWithLogitsLoss
+            num_classes
         )
 
         # Dropout layer
@@ -118,9 +118,9 @@ class NetworkTrafficRNN(torch.nn.Module):
 
         # Set hyperparameters
         if type(hyperparams) is dict:
-            self.batch_size = hyperparams.get('batch_size', 32)
-            self.learning_rate = hyperparams.get('learning_rate', 0.001)
-            self.num_epochs = hyperparams.get('num_epochs', 2)
+            self.batch_size = hyperparams.get('batch_size', 2056)
+            self.learning_rate = hyperparams.get('learning_rate', 0.05)
+            self.num_epochs = hyperparams.get('num_epochs', 1)
             self.patience = hyperparams.get('patience', 3)
 
     def forward(self, x, lengths):
@@ -140,23 +140,25 @@ class NetworkTrafficRNN(torch.nn.Module):
 
         last = h_n[-1]  # [B, hidden * directions]
         out = self.fc(self.dropout(last))
-        out = out.squeeze(-1) # For BCEWithLogitsLoss
+        # out = out.squeeze(-1) # For BCEWithLogitsLoss
         return out
 
     def train_rnn(self, X_train, y_train, X_val, y_val):
         # Compute class weights
         y_train_np = np.array(y_train)
-        counts = np.bincount(y_train_np.astype(int), minlength=2)  # [count0, count1]
+        counts = np.bincount(y_train_np.astype(int), minlength=4)
         weights = 1.0 / (counts + 1e-6)
+        weights = weights / weights.sum() * 4  # optional normalization
         class_weights = torch.tensor(weights, dtype=torch.float32)
         print(f"Class weights: {class_weights}")
         print(f"Train class distribution: {Counter(y_train_np)}")
         print(f"Val class distribution: {Counter(np.array(y_val))}")
 
+        print("First 40 y_train:", list(np.array(y_train)[:40]))
         train_loader = DataLoader(
             SequenceDataset(X_train, y_train),
             batch_size=self.batch_size,
-            shuffle=False,
+            shuffle=True,
             collate_fn=pad_collate_fn
         )
         val_loader = DataLoader(
@@ -169,8 +171,8 @@ class NetworkTrafficRNN(torch.nn.Module):
         # Loss and optimizer
         pos = np.sum(y_train_np == 1)
         neg = np.sum(y_train_np == 0)
-        pos_weight = torch.tensor([neg / (pos + 1e-6)])
-        criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+        pos_weight = torch.tensor([min(neg / (pos + 1e-6), 10)])
+        criterion = torch.nn.CrossEntropyLoss(weight=class_weights)
         optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
 
         best_val_loss = float('inf')
@@ -181,14 +183,21 @@ class NetworkTrafficRNN(torch.nn.Module):
         for epoch in range(self.num_epochs):
             self.train()
             train_loss = 0.0
+            batch_ind = 0
             for padded_X, labels, lengths in train_loader:
+                batch_ind += 1
                 optimizer.zero_grad()
                 logits = self(padded_X, lengths)
-                loss = criterion(logits, labels.float())
+                loss = criterion(logits, labels.long())
                 loss.backward()
-                torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1.0)  # NEW
+                #torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1.0)  # NEW
                 optimizer.step()
                 train_loss += loss.item() * labels.size(0)
+                if batch_ind == 1:
+                    print("labels unique:", torch.unique(labels).cpu().numpy())
+                    print("labels dtype:", labels.dtype)
+                    print("logits shape:", logits.shape)
+                    print("logits abs max:", logits.abs().max().item())
 
             self.eval()
             val_loss = 0.0
@@ -197,10 +206,11 @@ class NetworkTrafficRNN(torch.nn.Module):
             with torch.no_grad():
                 for padded_X, labels, lengths in val_loader:
                     logits = self(padded_X, lengths)
-                    loss = criterion(logits, labels.float())
+                    loss = criterion(logits, labels.long())
                     val_loss += loss.item() * labels.size(0)
-                    probs = torch.sigmoid(logits)
-                    preds = (probs >= 0.5).long().cpu()
+                    # probs = torch.sigmoid(logits)
+                    # preds = (probs >= 0.5).long().cpu()
+                    _, preds = torch.max(logits, 1)
                     predicted_list.append(preds)
                     correct_list.append(labels.float().cpu())
 
@@ -235,33 +245,103 @@ class NetworkTrafficRNN(torch.nn.Module):
         self.eval()
         y_np = np.array(y)
         print(f"Test class distribution: {Counter(y_np)}")
-        criterion = torch.nn.BCEWithLogitsLoss()
+
+        criterion = torch.nn.CrossEntropyLoss()
         test_loader = DataLoader(
             SequenceDataset(X, y),
             batch_size=self.batch_size,
             shuffle=False,
             collate_fn=pad_collate_fn,
         )
-        prediction_list, label_list = [], []
+
+        prediction_list, label_list, prob_list = [], [], []
         test_loss = 0.0
+
         with torch.no_grad():
+            w = self.fc.weight.detach().cpu()
+            print("EVAL fc.weight norm:", float(w.norm()))
+            print("EVAL fc.weight[0,0]:", float(w[0, 0]))
+
             for padded_X, labels, lengths in test_loader:
                 logits = self(padded_X, lengths)
-                loss = criterion(logits, labels.float())
-                test_loss += loss.item() * labels.size(0)
-
-                probs = torch.sigmoid(logits)
-                preds = (probs >= 0.5).long().cpu()
+                print("logits[0]:", logits[0].detach().cpu().numpy())
+                probs = torch.softmax(logits, dim=1) # [B, 4]
+                print("probs[0]:", probs[0].detach().cpu().numpy())
+                print("pmax mean:", probs.max(dim=1).values.mean().item())
+                print("pred counts:", Counter(probs.argmax(dim=1).cpu().numpy()))
+                prob_list.append(probs.detach().cpu())
+                preds = torch.argmax(probs, dim=1)  # [B]
                 prediction_list.append(preds)
-                label_list.append(labels.float().cpu())
-        y_true = torch.cat(label_list)
-        y_pred = torch.cat(prediction_list)
-        print("Test Predicted Counts: ", Counter(y_pred.numpy()))
+
+                loss = criterion(logits, labels.long())
+                test_loss += loss.item() * labels.size(0)
+                label_list.append(labels.long().cpu())
+
+                # # logits could be [B], [B,1], or [B,2]
+                # if logits.ndim == 2 and logits.shape[1] == 2:
+                #     # CrossEntropy-style two logits -> probability of class 1
+                #     probs_pos = torch.softmax(logits, dim=1)[:, 1]
+                # else:
+                #     # BCEWithLogits-style single logit -> sigmoid
+                #     probs_pos = torch.sigmoid(logits.squeeze(-1))
+                #
+                # preds = (probs_pos >= 0.5).long().cpu()
+                # prob_list.append(probs_pos.detach().cpu())
+                # prediction_list.append(preds)
+
+        y_true = torch.cat(label_list).numpy()
+        y_pred = torch.cat(prediction_list).numpy()
+        y_prob = torch.cat(prob_list).numpy()
+
+        print("Test Predicted Counts: ", Counter(y_pred))
+
+        # F1 + classification report (as before)
+        f1 = calculate_f1_score(y_true, y_pred, average="weighted")
+
+        # --- NEW METRICS ---
+        # AUROC / PR-AUC can crash if only one class appears in y_true
+        try:
+            auroc = float(roc_auc_score(y_true, y_prob, multi_class="ovr", average="weighted"))
+        except ValueError as e:
+            print("AUROC calculation error:", e)
+            auroc = -1.0
+
+        try:
+            y_true_bin = label_binarize(y_true, classes=[0, 1, 2, 3])  # [N,4]
+            pr_auc = average_precision_score(y_true_bin, y_prob, average="weighted")
+        except ValueError as e:
+            print("PR-AUC calculation error:", e)
+            pr_auc = -1.0
+
+        # Recall@1%FPR (TPR at FPR <= 0.01)
+        try:
+            recalls = []
+            for c in range(4):
+                y_c = (y_true == c).astype(int)
+                fpr, tpr, _ = roc_curve(y_c, y_prob[:, c])
+                # take best TPR where FPR <= 0.01
+                mask = fpr <= 0.01
+                recalls.append(float(tpr[mask].max()) if mask.any() else 0.0)
+
+            recall_at_1_fpr = float(np.mean(recalls))
+        except ValueError as e:
+            print("Recall@1%FPR calculation error:", e)
+            recall_at_1_fpr = -1.0
+
+        # Put them into report so Flower can return them easily
+        report = classification_report(y_true, y_pred, output_dict=True)
+        report["auroc"] = auroc
+        report["pr_auc"] = pr_auc
+        report["recall_at_1_fpr"] = recall_at_1_fpr
+
+        print("Counter y_pred: ", Counter(y_pred))
+        print("np mean y_prob: ", np.mean(y_prob))
+        print("np std y_prob", np.std(y_prob))
 
         return (
             test_loss / len(test_loader.dataset),
-            calculate_f1_score(y_true, y_pred, average='weighted'),
-            classification_report(y_true, y_pred, output_dict=True)
+            f1,
+            report,
         )
 
     def set_parameters(self, parameters: List[np.ndarray], config, is_evaluate=False):
@@ -301,7 +381,7 @@ def create_hyper_param_space():
     hyper_param_space = {
         "learning_rate": [0.01],# 0.01, 0.05],
         "batch_size": [32, 64],# 128],
-        "num_epochs": [2],#[10, 20],# 30],
+        "num_epochs": [1],#[10, 20],# 30],
         "patience": [3],# 5, 7],
         "num_layers": [2,],# 3],
         "hidden_size": [64, 128],# 256],

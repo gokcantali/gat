@@ -133,8 +133,8 @@ class FedAvgCF(FedProx):
         # store selected participants per round as list of partition ids (or fallbacks)
         self.selected_participants_per_round: dict[int, list[str]] = {}
 
-        self.beta = 0.85         # momentum coefficient
-        self.server_lr = 0.3     # step size for applying momentum update
+        self.beta = 0.95          # momentum coefficient
+        self.server_lr = 0.85     # step size for applying momentum update
         self._velocity: Optional[NDArrays] = None
         self.previous_parameters: Optional[Parameters] = None
 
@@ -318,6 +318,13 @@ class FedAvgCF(FedProx):
             )
 
         return params_agg_with_momentum, metrics_agg
+
+        # if self.log_params_and_metrics_fn:
+        #     self.log_params_and_metrics_fn(
+        #         parameters_to_ndarrays(params_agg), metrics_agg
+        #     )
+        #
+        # return params_agg, metrics_agg
 
     def _calculate_carbon_based_priorities(self):
         priorities = {}

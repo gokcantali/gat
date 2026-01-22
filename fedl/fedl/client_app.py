@@ -148,9 +148,18 @@ class FlowerClientRNN(NumPyClient):
 
         self.net.set_parameters(parameters, config, is_evaluate=True)
         loss, f1, report = evaluate_model_rnn(self.net, self.X_test_seq, self.y_test_seq)
+
+        # report now contains: report["auroc"], report["pr_auc"], report["recall_at_1_fpr"]
+        metrics = {
+            "testing_f1_score": float(f1),
+            "testing_auroc": float(report.get("auroc", float("nan"))),
+            "testing_pr_auc": float(report.get("pr_auc", float("nan"))),
+            "testing_recall_at_1fpr": float(report.get("recall_at_1_fpr", float("nan"))),
+        }
+
         print("METRICS OF CLIENT:")
-        print(report)
-        return loss, len(self.X_test_seq), {"testing_f1_score": f1}
+        print(metrics)
+        return loss, len(self.X_test_seq), metrics
 
 
 def construct_flower_client(client_id, context):

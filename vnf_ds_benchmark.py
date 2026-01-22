@@ -335,10 +335,10 @@ def create_fixed_length_sequences(data, sequence_length=10, stride=5, max_sequen
 
     # Create sequences using sliding windows of fixed length
     X_normal, y_normal = [], []  # For label 0 (normal)
-    X_anomaly, y_anomaly = [], []  # For label 1 (anomaly)
+    X_anomaly, y_anomaly = [], []  # For other labels (anomaly)
 
     # Track class distribution
-    class_counts = {0: 0, 1: 0}
+    class_counts = {0: 0, 1: 0, 2: 0, 3: 0}
 
     # Create sequences
     seq_count = 0
@@ -350,14 +350,22 @@ def create_fixed_length_sequences(data, sequence_length=10, stride=5, max_sequen
         window_features = features.iloc[i:i+sequence_length].values
         window_labels = labels.iloc[i:i+sequence_length].values
 
-        anomaly_ratio = np.sum(window_labels == 1) / len(window_labels)
+        anomaly_ratio = int(np.count_nonzero(window_labels)) / len(window_labels)
 
         # Determine the anomaly ratio threshold by the proportion of anomalies in the dataset
-        dataset_anomaly_ratio = np.sum(labels == 1) / len(labels)
+        nonzero_count = int(np.count_nonzero(labels))
+        dataset_anomaly_ratio = nonzero_count / len(labels) if len(labels) > 0 else 0.0
 
         # Determine sequence label
         if anomaly_ratio > dataset_anomaly_ratio:
-            sequence_label = 1
+            # find the majority label in window_labels except zero
+            non_zero_labels = window_labels[window_labels != 0]
+            if len(non_zero_labels) == 0:
+                # no non-zero labels present — fallback to anomaly label 1
+                sequence_label = 1
+            else:
+                sequence_label = int(Counter(non_zero_labels).most_common(1)[0][0])
+
             X_anomaly.append(window_features)
             y_anomaly.append(sequence_label)
         else:
@@ -418,12 +426,12 @@ def train_rnn_model(X_train, y_train, X_val, y_val, rnn_cell="LSTM", hyperparams
     input_size = X_train[0].shape[1]
 
     # Count number of classes
-    num_classes = 2
+    num_classes = 4
 
     # Create model
     model = NetworkTrafficRNN(
         input_size=input_size,
-        hidden_size=hyperparams.get('hidden_size', 64),
+        hidden_size=hyperparams.get('hidden_size', 128),
         num_layers=hyperparams.get('num_layers', 2),
         num_classes=num_classes,
         cell_type=rnn_cell,
@@ -473,7 +481,7 @@ def train_rnn_with_k_fold_cv(X_sequences, y_sequences, rnn_cell="LSTM", is_verbo
             input_size=X_sequences[0].shape[1],
             hidden_size=hyper_param_conf['hidden_size'],
             num_layers=hyper_param_conf['num_layers'],
-            num_classes=2,
+            num_classes=4,
             cell_type=rnn_cell,
             dropout=hyper_param_conf['dropout'],
             hyperparams=hyper_param_conf
@@ -495,7 +503,7 @@ def train_rnn_with_k_fold_cv(X_sequences, y_sequences, rnn_cell="LSTM", is_verbo
                 input_size=X_sequences[0].shape[1],
                 hidden_size=hyper_param_conf['hidden_size'],
                 num_layers=hyper_param_conf['num_layers'],
-                num_classes=2,
+                num_classes=4,
                 cell_type=rnn_cell,
                 dropout=hyper_param_conf['dropout'],
                 hyperparams=hyper_param_conf
@@ -567,121 +575,172 @@ def prepare_sequences(
     dataset_ids=None,
     window_size_msec=20,
     stride_size_msec=50,
+    benign_sampling_ratio=1.0
 ):
+    def _create_sequences_from_dataframe(
+        df, dataset_ids=None,
+        benign_sampling_ratio=1.0,
+        output_sequence_filename_base="vALL"
+    ):
+        X, y = preprocess_df(
+            df, use_diversity_index=False,
+            benign_sampling_ratio=benign_sampling_ratio
+        )
+        X = X.drop(columns=['start_time'])
+        X = X.drop(columns=['stop_time'])
+        X = X.drop(columns=['source_country_normalized'])
+        X = X.drop(columns=['destination_country_normalized'])
+        X = X.drop(columns=['source_mac_normalized'])
+        X = X.drop(columns=['destination_asn_normalized'])
+        X = X.drop(columns=['payload_source_utf8_normalized'])
+        X = X.drop(columns=['payload_destination_utf8_normalized'])
+        # X = X.drop(columns=['protocols_normalized'])
+        # X = X.drop(columns=['version_normalized'])
+        X = X.drop(columns=['uri_normalized'])
+        X = X.drop(columns=['host_normalized'])
+        X = X.drop(columns=['hostname_normalized'])
+        X = X.drop(columns=['alt_name_normalized'])
+        X = X.drop(columns=['geo_normalized'])
+        X = X.drop(columns=['tcp_flag_urg'])
+        X = X.drop(columns=['type'])
+
+        # Drop IP parts and port labels to reduce bias
+        for i in range(1, 9):
+            X = X.drop(columns=[f'source_ip_part{i}'])
+            X = X.drop(columns=[f'destination_ip_part{i}'])
+        X = X.drop(columns=['source_port_label_normalized'])
+        X = X.drop(columns=['destination_port_label_normalized'])
+
+        print(f"X shape: {X.shape}")
+        print(f"y shape: {y.shape}")
+
+        feature_mean = X.mean(axis=0)  # Series of length n_features
+        feature_std = X.std(axis=0) + 1e-6  # Series of length n_features
+        X_norm = (X - feature_mean) / feature_std  # DataFrame, same shape as X
+        X_norm = np.clip(X_norm, -5, 5)
+
+        # Combine features and labels into a single DataFrame to allow dataset filtering
+        df_combined = X.copy()
+        df_combined['label'] = y.values if hasattr(y, "values") else np.array(y)
+
+        # If dataset_ids provided, filter rows by dataset_id column (if present)
+        if dataset_ids is not None and 'dataset_id' in df_combined.columns:
+            print(f"Filtering datasets to IDs: {dataset_ids}")
+            print(df_combined['dataset_id'])
+            df_combined = df_combined[df_combined['dataset_id'].isin(dataset_ids)].reset_index(drop=True)
+
+        # Split back into features and labels
+        y = df_combined['label']
+        X_norm = df_combined.drop(columns=['label'])
+        # Drop dataset_id column if present before splitting back
+        if 'dataset_id' in X_norm.columns:
+            X_norm = X_norm.drop(columns=['dataset_id'])
+
+        print(f"X_norm shape: {X_norm.shape}")
+        print(f"y shape: {y.shape}")
+
+        X_train_val, X_test, y_train_val, y_test = train_test_split(
+            X_norm, y, test_size=TEST_RATIO,
+            stratify=y, random_state=RANDOM_STATE
+        )
+        X_train, X_val, y_train, y_val = train_test_split(
+            X_train_val, y_train_val, test_size=VALIDATION_RATIO / (1 - TEST_RATIO),
+            stratify=y_train_val, random_state=RANDOM_STATE
+        )
+
+        training_ds = pd.DataFrame(X_train)
+        training_ds['label'] = y_train
+        if 'timestamp' not in training_ds.columns:
+            training_ds['timestamp'] = np.arange(len(training_ds))
+        # X_train_seq, y_train_seq = create_time_window_sequences(training_ds, window_size_msec, stride_size_msec)
+        X_train_seq, y_train_seq = create_fixed_length_sequences(training_ds, sequence_length=1, stride=1,
+                                                                 max_sequences=10000000, balance_classes=False)
+        # # create a CSV file for training_ds using X_train_seq and y_train_seq
+        # print(X_train_seq)
+        # training_ds_seq = pd.DataFrame(X_train_seq)
+        # training_ds_seq['label'] = y_train_seq
+        # training_ds_seq.to_csv(f"{output_filename_base}_train_seq.csv", index=False)
+
+        validation_ds = pd.DataFrame(X_val)
+        validation_ds['label'] = y_val
+        if 'timestamp' not in validation_ds.columns:
+            validation_ds['timestamp'] = np.arange(len(validation_ds))
+        # X_val_seq, y_val_seq = create_time_window_sequences(validation_ds, window_size_msec, stride_size_msec)
+        X_val_seq, y_val_seq = create_fixed_length_sequences(validation_ds, sequence_length=1, stride=1,
+                                                             max_sequences=10000000, balance_classes=False)
+        # # create a CSV file for val_ds using X_val_seq and y_val_seq
+        # val_ds_seq = pd.DataFrame(X_val_seq)
+        # val_ds_seq['label'] = y_val_seq
+        # val_ds_seq.to_csv(f"{output_filename_base}_val_seq.csv", index=False)
+
+        test_ds = pd.DataFrame(X_test)
+        test_ds['label'] = y_test
+        if 'timestamp' not in test_ds.columns:
+            test_ds['timestamp'] = np.arange(len(test_ds))
+        # X_test_seq, y_test_seq = create_time_window_sequences(test_ds, window_size_msec, stride_size_msec)
+        X_test_seq, y_test_seq = create_fixed_length_sequences(test_ds, sequence_length=1, stride=1,
+                                                               max_sequences=10000000, balance_classes=False)
+        # # create a CSV file for test_ds using X_test_seq and y_test_seq
+        # test_ds_seq = pd.DataFrame(X_test_seq)
+        # test_ds_seq['label'] = y_test_seq
+        # test_ds_seq.to_csv(f"{output_filename_base}_test_seq.csv", index=False)
+
+        np.savez_compressed(
+            f"data/VNFCyberData/{output_sequence_filename_base}_sequences.npz",
+            X_train=X_train_seq,
+            y_train=y_train_seq,
+            X_val=X_val_seq,
+            y_val=y_val_seq,
+            X_test=X_test_seq,
+            y_test=y_test_seq
+        )
+
+        return {
+            "X_train": X_train_seq,
+            "y_train": y_train_seq,
+            "X_val": X_val_seq,
+            "y_val": y_val_seq,
+            "X_test": X_test_seq,
+            "y_test": y_test_seq,
+            "X_norm": X_norm.drop(columns=['timestamp']),
+        }
+
     datasets = {
-        0: "vIDS.csv",
-        1: "vDNS.csv",
-        2: "vLB.csv",
-        3: "vProxy.csv",
-        4: "vRouter_vFW.csv"
+        0: "vIDS",
+        1: "vDNS",
+        2: "vLB",
+        3: "vProxy",
+        4: "vRouter_vFW"
     }
 
     output_sequence_filename_base = "vALL"
-    if dataset_ids is None:
-        dataset_ids = [0, 1, 2, 3, 4]
-    else:
+    if dataset_ids is not None:
         output_sequence_filename_base = "_".join(
-            [datasets[ind].split('.csv')[0] for ind in dataset_ids]
+            [datasets[ind] for ind in dataset_ids]
         )
 
-    df = pd.DataFrame()
-    for ds_id in dataset_ids:
+    all_df = pd.DataFrame()
+    for ds_id in datasets.keys():
         ds_name = datasets.get(ds_id)
-        ds_df = load_data(Path(f"data/VNFCyberData/{ds_name}"))
-        df = pd.concat([df, ds_df], ignore_index=True)
+        ds_df = load_data(Path(f"data/VNFCyberData/{ds_name}.csv"))
+        ds_df['dataset_id'] = ds_id
+        all_df = pd.concat([all_df, ds_df], ignore_index=True)
 
-    X, y = preprocess_df(df, use_diversity_index=False)
-    X = X.drop(columns=['source_mac_normalized'])
-    X = X.drop(columns=['destination_asn_normalized'])
-    X = X.drop(columns=['protocols_normalized'])
-    X = X.drop(columns=['version_normalized'])
-    X = X.drop(columns=['uri_normalized'])
-    X = X.drop(columns=['host_normalized'])
-    X = X.drop(columns=['hostname_normalized'])
-    X = X.drop(columns=['alt_name_normalized'])
-    X = X.drop(columns=['geo_normalized'])
-
-    # Drop IP parts and port labels to reduce bias
-    for i in range(1, 9):
-        X = X.drop(columns=[f'source_ip_part{i}'])
-        X = X.drop(columns=[f'destination_ip_part{i}'])
-    X = X.drop(columns=['source_port_label_normalized'])
-    X = X.drop(columns=['destination_port_label_normalized'])
-
-    feature_mean = X.mean(axis=0)  # Series of length n_features
-    feature_std = X.std(axis=0) + 1e-6  # Series of length n_features
-    X_norm = (X - feature_mean) / feature_std  # DataFrame, same shape as X
-
-    X_train_val, X_test, y_train_val, y_test = train_test_split(
-        X_norm, y, test_size=TEST_RATIO,
-        stratify=y,  random_state=RANDOM_STATE
+    return _create_sequences_from_dataframe(
+        all_df,
+        dataset_ids=dataset_ids,
+        benign_sampling_ratio=benign_sampling_ratio,
+        output_sequence_filename_base=output_sequence_filename_base
     )
-    X_train, X_val, y_train, y_val = train_test_split(
-        X_train_val, y_train_val, test_size=VALIDATION_RATIO/(1 - TEST_RATIO),
-        stratify=y_train_val,  random_state=RANDOM_STATE
-    )
-
-    training_ds = pd.DataFrame(X_train)
-    training_ds['label'] = y_train
-    if 'timestamp' not in training_ds.columns:
-        training_ds['timestamp'] = np.arange(len(training_ds))
-    # X_train_seq, y_train_seq = create_time_window_sequences(training_ds, window_size_msec, stride_size_msec)
-    X_train_seq, y_train_seq = create_fixed_length_sequences(training_ds, sequence_length=1, stride=1, max_sequences=10000000, balance_classes=False)
-    # # create a CSV file for training_ds using X_train_seq and y_train_seq
-    # print(X_train_seq)
-    # training_ds_seq = pd.DataFrame(X_train_seq)
-    # training_ds_seq['label'] = y_train_seq
-    # training_ds_seq.to_csv(f"{output_filename_base}_train_seq.csv", index=False)
-
-    validation_ds = pd.DataFrame(X_val)
-    validation_ds['label'] = y_val
-    if 'timestamp' not in validation_ds.columns:
-        validation_ds['timestamp'] = np.arange(len(validation_ds))
-    # X_val_seq, y_val_seq = create_time_window_sequences(validation_ds, window_size_msec, stride_size_msec)
-    X_val_seq, y_val_seq = create_fixed_length_sequences(validation_ds, sequence_length=1, stride=1, max_sequences=10000000, balance_classes=False)
-    # # create a CSV file for val_ds using X_val_seq and y_val_seq
-    # val_ds_seq = pd.DataFrame(X_val_seq)
-    # val_ds_seq['label'] = y_val_seq
-    # val_ds_seq.to_csv(f"{output_filename_base}_val_seq.csv", index=False)
-
-    test_ds = pd.DataFrame(X_test)
-    test_ds['label'] = y_test
-    if 'timestamp' not in test_ds.columns:
-        test_ds['timestamp'] = np.arange(len(test_ds))
-    # X_test_seq, y_test_seq = create_time_window_sequences(test_ds, window_size_msec, stride_size_msec)
-    X_test_seq, y_test_seq = create_fixed_length_sequences(test_ds, sequence_length=1, stride=1, max_sequences=10000000, balance_classes=False)
-    # # create a CSV file for test_ds using X_test_seq and y_test_seq
-    # test_ds_seq = pd.DataFrame(X_test_seq)
-    # test_ds_seq['label'] = y_test_seq
-    # test_ds_seq.to_csv(f"{output_filename_base}_test_seq.csv", index=False)
-
-    np.savez_compressed(
-        f"data/VNFCyberData/{output_sequence_filename_base}_sequences.npz",
-        X_train=X_train_seq,
-        y_train=y_train_seq,
-        X_val=X_val_seq,
-        y_val=y_val_seq,
-        X_test=X_test_seq,
-        y_test=y_test_seq
-    )
-
-    return {
-        "X_train": X_train_seq,
-        "y_train": y_train_seq,
-        "X_val": X_val_seq,
-        "y_val": y_val_seq,
-        "X_test": X_test_seq,
-        "y_test": y_test_seq
-    }
 
 
 def initialize_model():
     """Initialize the model with default parameters"""
     return NetworkTrafficRNN(
-        input_size=27,  # Example input size, adjust as needed
-        hidden_size=64,
+        input_size=72,  # Example input size, adjust as needed
+        hidden_size=128,
         num_layers=2,
-        num_classes=2,  # Example number of classes, adjust as needed
+        num_classes=4,  # Example number of classes, adjust as needed
         cell_type="LSTM",
         dropout=0.05,
         hyperparams=None

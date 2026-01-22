@@ -1,4 +1,5 @@
 ﻿import multiprocessing as mp
+from collections import defaultdict
 
 import pandas as pd
 
@@ -7,28 +8,32 @@ from gat.encoder import (
     ip_encoder,
     number_normalizer,
     string_encoder,
-    hex_encoder
+    hex_encoder, int_to_log1p, one_hot_encoder
 )
 from gat.load_data import load_data
 
 
+attack_types = defaultdict(lambda: 0)
+
+
 def enumerate_attack_classes(x):
+    attack_types[x.lower()] += 1
     if x.lower() == 'benign':
         return 0
-    elif 'dns amp' in x.lower():
-        return 1
-    elif 'dns exf' in x.lower():
-        return 1
-    elif 'dns spoof' in x.lower():
-        return 1
     elif 'malware' in x.lower():
         return 1
     elif 'scan' in x.lower():
-        return 1
+        return 2
     elif 'udp flood' in x.lower():
-        return 1
+        return 3
+    elif 'dns amp' in x.lower():
+        return 4
+    elif 'dns exf' in x.lower():
+        return 5
+    elif 'dns spoof' in x.lower():
+        return 6
     else:
-        return 1
+        return 0
 
 
 def diversity_index(series):
@@ -67,13 +72,28 @@ def construct_port_scan_label(df, use_diversity_index=True):
         df = df.sample(frac=1).reset_index(drop=True)
     return df
 
-def preprocess_df(df, use_diversity_index=True):
+def preprocess_df(df, use_diversity_index=True, benign_sampling_ratio=1.0):
     df = df[(df.start_time.notna()) & (df.start_time != '')]
     df = df[(df.stop_time.notna()) & (df.stop_time != '')]
     df = df[(df.source_ip.notna()) & (df.source_ip != '')]
     df = df[(df.destination_ip.notna()) & (df.destination_ip != '')]
     df = df.fillna('')
     df["timestamp"] = (0.5 * df["start_time"] + 0.5 * df["stop_time"]).astype(int)
+
+    # sample benign records with given ratio while preserving original order
+    try:
+        ratio = float(benign_sampling_ratio)
+    except Exception:
+        ratio = 1.0
+
+    if 0.0 <= ratio < 1.0 and "label" in df.columns:
+        benign_mask = df["label"].fillna("").str.lower() == "benign"
+        benign_df = df[benign_mask]
+        non_benign_df = df[~benign_mask]
+        if not benign_df.empty:
+            sampled_benign = benign_df.sample(frac=ratio, random_state=42).sort_index()
+            df = pd.concat([non_benign_df, sampled_benign]).sort_index()
+
     df = construct_port_scan_label(df, use_diversity_index=use_diversity_index)
     return preprocess_X(df), preprocess_y(df)
 
@@ -93,14 +113,31 @@ def preprocess_X(df, use_diversity_index=True):
         "payload_destination_utf8": hex_encoder,
         "source_mac": string_encoder,
         "destination_asn": string_encoder,
-        "protocols": string_encoder,
-        "ip_protocol": string_encoder,
-        "version": string_encoder,
+        "protocols": one_hot_encoder,
+        "ip_protocol": one_hot_encoder,
+        "version": one_hot_encoder,
+        "icmp_type": one_hot_encoder,
         "uri": string_encoder,
         "host": string_encoder,
         "hostname": string_encoder,
         "alt_name": string_encoder,
         "geo": string_encoder,
+        "packets": int_to_log1p,
+        'data_bytes': int_to_log1p,
+        'source_data_bytes': int_to_log1p,
+        'destination_data_bytes': int_to_log1p,
+        'bytes': int_to_log1p,
+        'src_bytes': int_to_log1p,
+        'dst_bytes': int_to_log1p,
+        'session_length': int_to_log1p,
+        'tcp_flag_syn': int_to_log1p,
+        'tcp_flag_syn_ack': int_to_log1p,
+        'tcp_flag_ack': int_to_log1p,
+        'tcp_flag_psh': int_to_log1p,
+        'tcp_flag_fin': int_to_log1p,
+        'tcp_flag_rst': int_to_log1p,
+        'session_segments': int_to_log1p,
+        'initial_rtt': int_to_log1p
     }
 
     for column, encoder_function in encoder_map.items():

@@ -1,5 +1,6 @@
 ﻿import hashlib
 
+import numpy as np
 import pandas as pd
 import torch
 
@@ -57,6 +58,50 @@ def number_normalizer(df, column_name):
         normalized_tensor.numpy(), index=df[df[column_name].notna()].index)
     df[f"{column_name}_normalized"] = normalized_series
     df = df.drop([column_name, f"{column_name}_int"], axis=1)
+    return df
+
+def int_to_log1p(df, column_name):
+    df[f"{column_name}_int"] = df[column_name].apply(
+        lambda x: int(x) if pd.notna(x) and x != '' else 0
+    )
+    tensor = torch.tensor(df[f"{column_name}_int"].values.astype(int))
+    df[f"{column_name}_log1p"] = np.log1p(tensor)
+    df = df.drop([column_name, f"{column_name}_int"], axis=1)
+    return df
+
+def one_hot_encoder(df, column_name, max_unique=40):
+    """
+    One-hot encode a single column in-place style: return a new DataFrame with
+    one-hot columns and original column dropped.
+
+    - If column missing, returns df unchanged.
+    - If unique values exceed `max_unique`, fallback to `string_encoder`.
+    """
+    if column_name not in df.columns:
+        return df
+
+    # Convert to strings and keep NaNs as empty string
+    s = df[column_name].astype(str).fillna("")
+
+    uniques = pd.unique(s)
+    if len(uniques) == 0:
+        return df
+
+    # Avoid creating huge numbers of columns; fallback to hashing/string encoder
+    if len(uniques) > max_unique:
+        return string_encoder(df, column_name)
+
+    # Use pandas get_dummies to create deterministic one-hot columns
+    dummies = pd.get_dummies(s, prefix=f"{column_name}_oh")
+
+    # Ensure deterministic ordering of columns based on observed unique order
+    expected_cols = [f"{column_name}_oh_{u}" for u in uniques]
+    for col in expected_cols:
+        if col not in dummies.columns:
+            dummies[col] = 0
+    dummies = dummies[expected_cols].astype(float)
+
+    df = df.join(dummies)
     return df
 
 def hex_encoder(df, column_name):
