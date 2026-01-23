@@ -33,10 +33,11 @@ def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
     return aggregated_metrics
 
 
-NUM_ROUNDS = 20
-METHOD = "non_cf"
-TRIAL = "100"
+NUM_ROUNDS = 50
+METHOD = "simple_avg"
+TRIAL = "Macro Metrics"
 ML_MODEL = "RNN"  # or "GCN"
+RNN_CELL = "LSTM" # "LSTM" or "RNN" or "GRU
 
 EXPERIMENT_NAME = f"{ML_MODEL}-5Nodes-{NUM_ROUNDS}Rounds-{METHOD}"
 EXPERIMENT_ID = mlflow.set_experiment(
@@ -107,7 +108,7 @@ def log_model_params_and_metrics_to_mlflow(
             if ML_MODEL == "GNN":
                 model = initialize_gcn_model(num_classes=4)
             elif ML_MODEL == "RNN":
-                model = initialize_rnn_model()
+                model = initialize_rnn_model(cell_type=RNN_CELL)
             else:
                 print("Unknown model type. Please use 'GNN' or 'RNN'.")
                 return

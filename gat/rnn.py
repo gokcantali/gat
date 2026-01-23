@@ -119,7 +119,7 @@ class NetworkTrafficRNN(torch.nn.Module):
         # Set hyperparameters
         if type(hyperparams) is dict:
             self.batch_size = hyperparams.get('batch_size', 2056)
-            self.learning_rate = hyperparams.get('learning_rate', 0.05)
+            self.learning_rate = hyperparams.get('learning_rate', 0.0005)
             self.num_epochs = hyperparams.get('num_epochs', 1)
             self.patience = hyperparams.get('patience', 3)
 
@@ -150,11 +150,11 @@ class NetworkTrafficRNN(torch.nn.Module):
         weights = 1.0 / (counts + 1e-6)
         weights = weights / weights.sum() * 4  # optional normalization
         class_weights = torch.tensor(weights, dtype=torch.float32)
+        print(f"Class counts: {counts}")
         print(f"Class weights: {class_weights}")
         print(f"Train class distribution: {Counter(y_train_np)}")
         print(f"Val class distribution: {Counter(np.array(y_val))}")
 
-        print("First 40 y_train:", list(np.array(y_train)[:40]))
         train_loader = DataLoader(
             SequenceDataset(X_train, y_train),
             batch_size=self.batch_size,
@@ -173,7 +173,7 @@ class NetworkTrafficRNN(torch.nn.Module):
         neg = np.sum(y_train_np == 0)
         pos_weight = torch.tensor([min(neg / (pos + 1e-6), 10)])
         criterion = torch.nn.CrossEntropyLoss(weight=class_weights)
-        optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate, weight_decay=0.0001)
 
         best_val_loss = float('inf')
         best_f1_score = 0.0
@@ -224,11 +224,11 @@ class NetworkTrafficRNN(torch.nn.Module):
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
                 try:
-                    best_f1_score = calculate_f1_score(torch.cat(correct_list), torch.cat(predicted_list), average='weighted')
+                    best_f1_score = calculate_f1_score(torch.cat(correct_list), torch.cat(predicted_list), average='macro')
                 except ValueError:
                     y_true = torch.cat(correct_list).numpy()
                     y_pred = torch.cat(predicted_list).numpy()
-                    best_f1_score = calculate_f1_score(y_true, y_pred, average='weighted')
+                    best_f1_score = calculate_f1_score(y_true, y_pred, average='macro')
                 patience_counter = 0
                 best_parameter_state = self.state_dict()
             else:
@@ -296,19 +296,19 @@ class NetworkTrafficRNN(torch.nn.Module):
         print("Test Predicted Counts: ", Counter(y_pred))
 
         # F1 + classification report (as before)
-        f1 = calculate_f1_score(y_true, y_pred, average="weighted")
+        f1 = calculate_f1_score(y_true, y_pred, average="macro")
 
         # --- NEW METRICS ---
         # AUROC / PR-AUC can crash if only one class appears in y_true
         try:
-            auroc = float(roc_auc_score(y_true, y_prob, multi_class="ovr", average="weighted"))
+            auroc = float(roc_auc_score(y_true, y_prob, multi_class="ovr", average="macro"))
         except ValueError as e:
             print("AUROC calculation error:", e)
             auroc = -1.0
 
         try:
             y_true_bin = label_binarize(y_true, classes=[0, 1, 2, 3])  # [N,4]
-            pr_auc = average_precision_score(y_true_bin, y_prob, average="weighted")
+            pr_auc = average_precision_score(y_true_bin, y_prob, average="macro")
         except ValueError as e:
             print("PR-AUC calculation error:", e)
             pr_auc = -1.0
@@ -510,7 +510,7 @@ def benchmark_model(classifier="RF"):
                 y_predict = model.predict(X_inner_test)
                 # use scikit learn for f1 score
 
-                rf_f1_score = f1_score(y_inner_test, y_predict, average='weighted')
+                rf_f1_score = f1_score(y_inner_test, y_predict, average='macro')
                 avg_f1_score_per_fold += rf_f1_score / 3
 
             # Save the best model
@@ -541,7 +541,7 @@ def benchmark_model(classifier="RF"):
 
         # Evaluate the model on the outer test set
         y_pred = model.predict(X_test)
-        rf_f1_score = f1_score(y_test, y_pred, average='weighted')
+        rf_f1_score = f1_score(y_test, y_pred, average='macro')
         rf_clas_report = classification_report(y_test, y_pred, output_dict=True)
         print("Outer Classification Report")
         print(rf_clas_report)

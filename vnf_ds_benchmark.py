@@ -608,8 +608,8 @@ def prepare_sequences(
         for i in range(1, 9):
             X = X.drop(columns=[f'source_ip_part{i}'])
             X = X.drop(columns=[f'destination_ip_part{i}'])
-        X = X.drop(columns=['source_port_label_normalized'])
-        X = X.drop(columns=['destination_port_label_normalized'])
+        # X = X.drop(columns=['source_port_label_normalized'])
+        # X = X.drop(columns=['destination_port_label_normalized'])
 
         print(f"X shape: {X.shape}")
         print(f"y shape: {y.shape}")
@@ -734,25 +734,25 @@ def prepare_sequences(
     )
 
 
-def initialize_model():
+def initialize_model(cell_type="LSTM"):
     """Initialize the model with default parameters"""
     return NetworkTrafficRNN(
-        input_size=72,  # Example input size, adjust as needed
+        input_size=74,  # Example input size, adjust as needed
         hidden_size=128,
         num_layers=2,
         num_classes=4,  # Example number of classes, adjust as needed
-        cell_type="LSTM",
+        cell_type=cell_type,
         dropout=0.05,
         hyperparams=None
     )
 
 
-def train_model(model, X_train_seq, y_train_seq, X_val_seq, y_val_seq):
+def train_model(model, X_train_seq, y_train_seq, X_val_seq, y_val_seq, rnn_cell="LSTM"):
     """Train the RNN model"""
     if len(X_train_seq) == 0:
         raise ValueError("Empty training data")
 
-    return train_rnn_model(X_train_seq, y_train_seq, X_val_seq, y_val_seq, rnn_cell="LSTM", ext_model=model)
+    return train_rnn_model(X_train_seq, y_train_seq, X_val_seq, y_val_seq, rnn_cell=rnn_cell, ext_model=model)
 
 
 def evaluate_model(model, X_test_seq, y_test_seq):

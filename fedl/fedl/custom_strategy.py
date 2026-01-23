@@ -111,7 +111,7 @@ class FedAvgCF(FedProx):
         method: str = "lin_reg", total_rounds: int = 60,
         trial: str = "First",
         log_params_and_metrics_fn: Optional[callable] = None,
-        proximal_mu: float = 0.05,
+        proximal_mu: float = 0.10,
         **kwargs
     ):
         super().__init__(**kwargs, proximal_mu=proximal_mu)
@@ -133,8 +133,8 @@ class FedAvgCF(FedProx):
         # store selected participants per round as list of partition ids (or fallbacks)
         self.selected_participants_per_round: dict[int, list[str]] = {}
 
-        self.beta = 0.95          # momentum coefficient
-        self.server_lr = 0.85     # step size for applying momentum update
+        self.beta = 0.90          # momentum coefficient
+        self.server_lr = 0.10     # step size for applying momentum update
         self._velocity: Optional[NDArrays] = None
         self.previous_parameters: Optional[Parameters] = None
 

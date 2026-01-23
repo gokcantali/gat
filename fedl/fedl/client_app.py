@@ -19,6 +19,7 @@ from vnf_ds_benchmark import get_sequences
 TEST_SIZE = 0.10
 VALIDATION_SIZE = 0.10
 TRAIN_SIZE = 1 - VALIDATION_SIZE - TEST_SIZE
+RNN_CELL = "LSTM"  # or "LSTM" or "RNN
 
 
 class FlowerClient(NumPyClient):
@@ -120,7 +121,8 @@ class FlowerClientRNN(NumPyClient):
         tracker.start()
         start_time_train_rnn = time.time()
         new_model, loss, f1_score = train_model_rnn(
-            self.net, self.X_train_seq, self.y_train_seq, self.X_val_seq, self.y_val_seq
+            self.net, self.X_train_seq, self.y_train_seq, self.X_val_seq, self.y_val_seq,
+            rnn_cell=RNN_CELL
         )
         end_time_train_rnn = time.time()
         print("Client Training Time: ", end_time_train_rnn - start_time_train_rnn)
@@ -208,7 +210,7 @@ def construct_flower_client_rnn_vnf_datasets(client_id, context):
     from vnf_ds_benchmark import prepare_sequences, initialize_model
     print("Constructing Flower Client for VNF dataset - with client id: ", client_id)
 
-    net = initialize_model()
+    net = initialize_model(cell_type=RNN_CELL)
 
     df_dict = get_sequences(dataset_id=client_id)
     all_df_dict = get_sequences(dataset_id=-1) # sequences of ALL datasets
