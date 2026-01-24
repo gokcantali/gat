@@ -106,7 +106,8 @@ class NetworkTrafficRNN(torch.nn.Module):
         # Fully connected layer
         self.fc = torch.nn.Linear(
             hidden_size * (2 if is_bidirectional else 1),
-            num_classes
+            # num_classes
+            1 # for BCEWithLogitsLoss
         )
 
         # Dropout layer
@@ -140,15 +141,15 @@ class NetworkTrafficRNN(torch.nn.Module):
 
         last = h_n[-1]  # [B, hidden * directions]
         out = self.fc(self.dropout(last))
-        # out = out.squeeze(-1) # For BCEWithLogitsLoss
+        out = out.squeeze(-1) # For BCEWithLogitsLoss
         return out
 
     def train_rnn(self, X_train, y_train, X_val, y_val):
         # Compute class weights
         y_train_np = np.array(y_train)
-        counts = np.bincount(y_train_np.astype(int), minlength=4)
+        counts = np.bincount(y_train_np.astype(int), minlength=2)
         weights = 1.0 / (counts + 1e-6)
-        weights = weights / weights.sum() * 4  # optional normalization
+        weights = weights / weights.sum()  # optional normalization
         class_weights = torch.tensor(weights, dtype=torch.float32)
         print(f"Class counts: {counts}")
         print(f"Class weights: {class_weights}")
@@ -172,7 +173,7 @@ class NetworkTrafficRNN(torch.nn.Module):
         pos = np.sum(y_train_np == 1)
         neg = np.sum(y_train_np == 0)
         pos_weight = torch.tensor([min(neg / (pos + 1e-6), 10)])
-        criterion = torch.nn.CrossEntropyLoss(weight=class_weights)
+        criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
         optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate, weight_decay=0.0001)
 
         best_val_loss = float('inf')
@@ -188,7 +189,7 @@ class NetworkTrafficRNN(torch.nn.Module):
                 batch_ind += 1
                 optimizer.zero_grad()
                 logits = self(padded_X, lengths)
-                loss = criterion(logits, labels.long())
+                loss = criterion(logits, labels.float())
                 loss.backward()
                 #torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1.0)  # NEW
                 optimizer.step()
@@ -206,11 +207,11 @@ class NetworkTrafficRNN(torch.nn.Module):
             with torch.no_grad():
                 for padded_X, labels, lengths in val_loader:
                     logits = self(padded_X, lengths)
-                    loss = criterion(logits, labels.long())
+                    loss = criterion(logits, labels.float())
                     val_loss += loss.item() * labels.size(0)
-                    # probs = torch.sigmoid(logits)
-                    # preds = (probs >= 0.5).long().cpu()
-                    _, preds = torch.max(logits, 1)
+                    probs = torch.sigmoid(logits)
+                    preds = (probs >= 0.5).long().cpu()
+                    #_, preds = torch.max(logits, 1)
                     predicted_list.append(preds)
                     correct_list.append(labels.float().cpu())
 
@@ -246,7 +247,7 @@ class NetworkTrafficRNN(torch.nn.Module):
         y_np = np.array(y)
         print(f"Test class distribution: {Counter(y_np)}")
 
-        criterion = torch.nn.CrossEntropyLoss()
+        criterion = torch.nn.BCEWithLogitsLoss()
         test_loader = DataLoader(
             SequenceDataset(X, y),
             batch_size=self.batch_size,
@@ -265,29 +266,26 @@ class NetworkTrafficRNN(torch.nn.Module):
             for padded_X, labels, lengths in test_loader:
                 logits = self(padded_X, lengths)
                 print("logits[0]:", logits[0].detach().cpu().numpy())
-                probs = torch.softmax(logits, dim=1) # [B, 4]
-                print("probs[0]:", probs[0].detach().cpu().numpy())
-                print("pmax mean:", probs.max(dim=1).values.mean().item())
-                print("pred counts:", Counter(probs.argmax(dim=1).cpu().numpy()))
-                prob_list.append(probs.detach().cpu())
-                preds = torch.argmax(probs, dim=1)  # [B]
-                prediction_list.append(preds)
-
-                loss = criterion(logits, labels.long())
+                loss = criterion(logits, labels.float())
                 test_loss += loss.item() * labels.size(0)
                 label_list.append(labels.long().cpu())
 
-                # # logits could be [B], [B,1], or [B,2]
-                # if logits.ndim == 2 and logits.shape[1] == 2:
-                #     # CrossEntropy-style two logits -> probability of class 1
-                #     probs_pos = torch.softmax(logits, dim=1)[:, 1]
-                # else:
-                #     # BCEWithLogits-style single logit -> sigmoid
-                #     probs_pos = torch.sigmoid(logits.squeeze(-1))
-                #
-                # preds = (probs_pos >= 0.5).long().cpu()
-                # prob_list.append(probs_pos.detach().cpu())
-                # prediction_list.append(preds)
+                # probs = torch.softmax(logits, dim=1) # [B, 4]
+                # logits could be [B], [B,1], or [B,2]
+                if logits.ndim == 2 and logits.shape[1] == 2:
+                    # CrossEntropy-style two logits -> probability of class 1
+                    probs = torch.softmax(logits, dim=1)[:, 1]
+                else:
+                    # BCEWithLogits-style single logit -> sigmoid
+                    probs = torch.sigmoid(logits.squeeze(-1))
+                prob_list.append(probs.detach().cpu())
+                print("probs[0]:", probs[0].detach().cpu().numpy())
+                # print("pmax mean:", probs.max(dim=1).values.mean().item())
+
+                # preds = torch.argmax(probs, dim=1)  # [B]
+                preds = (probs >= 0.5).long().cpu()
+                prediction_list.append(preds)
+                print("pred counts:", Counter(preds.numpy()))
 
         y_true = torch.cat(label_list).numpy()
         y_pred = torch.cat(prediction_list).numpy()
@@ -307,7 +305,7 @@ class NetworkTrafficRNN(torch.nn.Module):
             auroc = -1.0
 
         try:
-            y_true_bin = label_binarize(y_true, classes=[0, 1, 2, 3])  # [N,4]
+            y_true_bin = label_binarize(y_true, classes=[0, 1])  # [N,2]
             pr_auc = average_precision_score(y_true_bin, y_prob, average="macro")
         except ValueError as e:
             print("PR-AUC calculation error:", e)
@@ -316,9 +314,9 @@ class NetworkTrafficRNN(torch.nn.Module):
         # Recall@1%FPR (TPR at FPR <= 0.01)
         try:
             recalls = []
-            for c in range(4):
+            for c in range(2):
                 y_c = (y_true == c).astype(int)
-                fpr, tpr, _ = roc_curve(y_c, y_prob[:, c])
+                fpr, tpr, _ = roc_curve(y_c, y_prob)
                 # take best TPR where FPR <= 0.01
                 mask = fpr <= 0.01
                 recalls.append(float(tpr[mask].max()) if mask.any() else 0.0)
@@ -604,7 +602,7 @@ if __name__ == '__main__':
                 input_size=X_train_val[0][0].size,
                 hidden_size=hyper_param_conf['hidden_size'],
                 num_layers=hyper_param_conf['num_layers'],
-                num_classes=4,
+                num_classes=2,
                 cell_type=rnn_cell,
                 dropout=hyper_param_conf['dropout'],
                 hyperparams=hyper_param_conf
@@ -663,7 +661,7 @@ if __name__ == '__main__':
             input_size=X_train_val[0][0].size,
             hidden_size=best_params['hidden_size'],
             num_layers=best_params['num_layers'],
-            num_classes=4,
+            num_classes=2,
             cell_type=rnn_cell,
             dropout=best_params['dropout'],
             hyperparams=best_params

@@ -23,15 +23,15 @@ def enumerate_attack_classes(x):
     elif 'malware' in x.lower():
         return 1
     elif 'scan' in x.lower():
-        return 2
+        return 1
     elif 'udp flood' in x.lower():
-        return 3
+        return 1
     elif 'dns amp' in x.lower():
-        return 4
+        return 1
     elif 'dns exf' in x.lower():
-        return 5
+        return 1
     elif 'dns spoof' in x.lower():
-        return 6
+        return 1
     else:
         return 0
 
@@ -58,6 +58,28 @@ def split_dataframe(df, num_chunks):
     chunks = [df.iloc[i * chunk_size:(i + 1) * chunk_size] for i in range(num_chunks)]
     return chunks
 
+def sample_benign_traffic(df, benign_sampling_ratio):
+    # sample benign records with given ratio while preserving original order
+    try:
+        ratio = float(benign_sampling_ratio)
+    except Exception as e:
+        print("benign_sampling_ratio must be numeric")
+        print(e)
+        ratio = 1.0
+
+    print("benign_sampling_ratio:", ratio)
+    print(df["label"])
+
+    if 0.0 <= ratio < 1.0 and "label" in df.columns:
+        benign_mask = df["label"].fillna(0) == 0
+        benign_df = df[benign_mask]
+        non_benign_df = df[~benign_mask]
+        if not benign_df.empty:
+            sampled_benign = benign_df.sample(frac=ratio, random_state=42).sort_index()
+            df = pd.concat([non_benign_df, sampled_benign]).sort_index()
+
+    return df
+
 def construct_port_scan_label(df, use_diversity_index=True):
     df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
     df.sort_values(by=["timestamp"], inplace=True)
@@ -79,20 +101,6 @@ def preprocess_df(df, use_diversity_index=True, benign_sampling_ratio=1.0):
     df = df[(df.destination_ip.notna()) & (df.destination_ip != '')]
     df = df.fillna('')
     df["timestamp"] = (0.5 * df["start_time"] + 0.5 * df["stop_time"]).astype(int)
-
-    # sample benign records with given ratio while preserving original order
-    try:
-        ratio = float(benign_sampling_ratio)
-    except Exception:
-        ratio = 1.0
-
-    if 0.0 <= ratio < 1.0 and "label" in df.columns:
-        benign_mask = df["label"].fillna("").str.lower() == "benign"
-        benign_df = df[benign_mask]
-        non_benign_df = df[~benign_mask]
-        if not benign_df.empty:
-            sampled_benign = benign_df.sample(frac=ratio, random_state=42).sort_index()
-            df = pd.concat([non_benign_df, sampled_benign]).sort_index()
 
     df = construct_port_scan_label(df, use_diversity_index=use_diversity_index)
     return preprocess_X(df), preprocess_y(df)

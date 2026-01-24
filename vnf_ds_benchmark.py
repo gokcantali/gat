@@ -12,7 +12,7 @@ from sklearn.metrics import confusion_matrix, f1_score, classification_report
 from sklearn.model_selection import train_test_split, StratifiedKFold, GridSearchCV
 
 from gat.load_data import load_data
-from gat.vnf_ds_preprocesser import preprocess_df, preprocess_X, preprocess_y
+from gat.vnf_ds_preprocesser import preprocess_df, preprocess_X, preprocess_y, sample_benign_traffic
 from gat.rnn import NetworkTrafficRNN, pad_collate_fn, SequenceDataset, subset
 
 
@@ -331,85 +331,89 @@ def create_fixed_length_sequences(data, sequence_length=10, stride=5, max_sequen
     if 'timestamp' in features.columns:
         features = features.drop(columns=['timestamp'])
 
+    # SHORTCUT FOR SEQUENCE LENGTH == 1
     labels = data['label']
+    X = [features.iloc[i:i+1].values for i in range(0, len(features), 1)]
+    y = labels.values
 
-    # Create sequences using sliding windows of fixed length
-    X_normal, y_normal = [], []  # For label 0 (normal)
-    X_anomaly, y_anomaly = [], []  # For other labels (anomaly)
-
-    # Track class distribution
-    class_counts = {0: 0, 1: 0, 2: 0, 3: 0}
-
-    # Create sequences
-    seq_count = 0
-    for i in range(0, len(data) - sequence_length + 1, stride):
-        if seq_count >= max_sequences and not balance_classes:
-            break
-
-        # Extract sequence
-        window_features = features.iloc[i:i+sequence_length].values
-        window_labels = labels.iloc[i:i+sequence_length].values
-
-        anomaly_ratio = int(np.count_nonzero(window_labels)) / len(window_labels)
-
-        # Determine the anomaly ratio threshold by the proportion of anomalies in the dataset
-        nonzero_count = int(np.count_nonzero(labels))
-        dataset_anomaly_ratio = nonzero_count / len(labels) if len(labels) > 0 else 0.0
-
-        # Determine sequence label
-        if anomaly_ratio > dataset_anomaly_ratio:
-            # find the majority label in window_labels except zero
-            non_zero_labels = window_labels[window_labels != 0]
-            if len(non_zero_labels) == 0:
-                # no non-zero labels present — fallback to anomaly label 1
-                sequence_label = 1
-            else:
-                sequence_label = int(Counter(non_zero_labels).most_common(1)[0][0])
-
-            X_anomaly.append(window_features)
-            y_anomaly.append(sequence_label)
-        else:
-            sequence_label = 0
-            X_normal.append(window_features)
-            y_normal.append(sequence_label)
-
-        # Update class distribution counter
-        class_counts[sequence_label] = class_counts.get(sequence_label, 0) + 1
-        seq_count += 1
-
-    # Balance classes if requested
-    if balance_classes:
-        # Determine the minimum number of sequences per class
-        min_class_count = min(len(X_normal), len(X_anomaly))
-        if min_class_count == 0:
-            # If one class has no sequences, just use what we have
-            X = X_normal + X_anomaly
-            y = y_normal + y_anomaly
-        else:
-            # Randomly select min_class_count sequences from each class
-            np.random.seed(RANDOM_STATE)  # For reproducibility
-            normal_indices = np.random.choice(len(X_normal), min(min_class_count*3, len(X_normal)), replace=False)
-            anomaly_indices = np.random.choice(len(X_anomaly), min(min_class_count*3, len(X_anomaly)), replace=False)
-
-            X = [X_normal[i] for i in normal_indices] + [X_anomaly[i] for i in anomaly_indices]
-            y = [y_normal[i] for i in normal_indices] + [y_anomaly[i] for i in anomaly_indices]
-
-            # Shuffle the balanced dataset
-            combined = list(zip(X, y))
-            np.random.shuffle(combined)
-            X, y = zip(*combined)
-            X, y = list(X), list(y)
-
-            # Update class counts
-            class_counts = {0: len(normal_indices), 1: len(anomaly_indices)}
-    else:
-        # Just combine the sequences
-        X = X_normal + X_anomaly
-        y = y_normal + y_anomaly
-
-    print(f"Created {len(X)} sequences from {len(data)} data points")
-    print(f"Sequence length: {sequence_length}, Stride: {stride}")
-    print(f"Class distribution in sequences: {class_counts}")
+    # CLOSED FOR DEBUGGING PURPOSES
+    # # Create sequences using sliding windows of fixed length
+    # X_normal, y_normal = [], []  # For label 0 (normal)
+    # X_anomaly, y_anomaly = [], []  # For other labels (anomaly)
+    #
+    # # Track class distribution
+    # class_counts = {0: 0, 1: 0}
+    #
+    # # Create sequences
+    # seq_count = 0
+    # for i in range(0, len(data) - sequence_length + 1, stride):
+    #     if seq_count >= max_sequences and not balance_classes:
+    #         break
+    #
+    #     # Extract sequence
+    #     window_features = features.iloc[i:i+sequence_length].values
+    #     window_labels = labels.iloc[i:i+sequence_length].values
+    #
+    #     anomaly_ratio = int(np.count_nonzero(window_labels)) / len(window_labels)
+    #
+    #     # Determine the anomaly ratio threshold by the proportion of anomalies in the dataset
+    #     nonzero_count = int(np.count_nonzero(labels))
+    #     dataset_anomaly_ratio = nonzero_count / len(labels) if len(labels) > 0 else 0.0
+    #
+    #     # Determine sequence label
+    #     if anomaly_ratio > dataset_anomaly_ratio:
+    #         # find the majority label in window_labels except zero
+    #         non_zero_labels = window_labels[window_labels != 0]
+    #         if len(non_zero_labels) == 0:
+    #             # no non-zero labels present — fallback to anomaly label 1
+    #             sequence_label = 1
+    #         else:
+    #             sequence_label = int(Counter(non_zero_labels).most_common(1)[0][0])
+    #
+    #         X_anomaly.append(window_features)
+    #         y_anomaly.append(sequence_label)
+    #     else:
+    #         sequence_label = 0
+    #         X_normal.append(window_features)
+    #         y_normal.append(sequence_label)
+    #
+    #     # Update class distribution counter
+    #     class_counts[sequence_label] = class_counts.get(sequence_label, 0) + 1
+    #     seq_count += 1
+    #
+    # # Balance classes if requested
+    # if balance_classes:
+    #     # Determine the minimum number of sequences per class
+    #     min_class_count = min(len(X_normal), len(X_anomaly))
+    #     if min_class_count == 0:
+    #         # If one class has no sequences, just use what we have
+    #         X = X_normal + X_anomaly
+    #         y = y_normal + y_anomaly
+    #     else:
+    #         # Randomly select min_class_count sequences from each class
+    #         np.random.seed(RANDOM_STATE)  # For reproducibility
+    #         normal_indices = np.random.choice(len(X_normal), min(min_class_count*3, len(X_normal)), replace=False)
+    #         anomaly_indices = np.random.choice(len(X_anomaly), min(min_class_count*3, len(X_anomaly)), replace=False)
+    #
+    #         X = [X_normal[i] for i in normal_indices] + [X_anomaly[i] for i in anomaly_indices]
+    #         y = [y_normal[i] for i in normal_indices] + [y_anomaly[i] for i in anomaly_indices]
+    #
+    #         # Shuffle the balanced dataset
+    #         combined = list(zip(X, y))
+    #         np.random.shuffle(combined)
+    #         X, y = zip(*combined)
+    #         X, y = list(X), list(y)
+    #
+    #         # Update class counts
+    #         class_counts = {0: len(normal_indices), 1: len(anomaly_indices)}
+    # else:
+    #     # Just combine the sequences
+    #     X = X_normal + X_anomaly
+    #     y = y_normal + y_anomaly
+    #
+    # print(f"Created {len(X)} sequences from {len(data)} data points")
+    # print(f"Sequence length: {sequence_length}, Stride: {stride}")
+    # print(f"Class distribution in sequences: {class_counts}")
 
     return X, y
 
@@ -426,7 +430,7 @@ def train_rnn_model(X_train, y_train, X_val, y_val, rnn_cell="LSTM", hyperparams
     input_size = X_train[0].shape[1]
 
     # Count number of classes
-    num_classes = 4
+    num_classes = 2
 
     # Create model
     model = NetworkTrafficRNN(
@@ -481,7 +485,7 @@ def train_rnn_with_k_fold_cv(X_sequences, y_sequences, rnn_cell="LSTM", is_verbo
             input_size=X_sequences[0].shape[1],
             hidden_size=hyper_param_conf['hidden_size'],
             num_layers=hyper_param_conf['num_layers'],
-            num_classes=4,
+            num_classes=2,
             cell_type=rnn_cell,
             dropout=hyper_param_conf['dropout'],
             hyperparams=hyper_param_conf
@@ -503,7 +507,7 @@ def train_rnn_with_k_fold_cv(X_sequences, y_sequences, rnn_cell="LSTM", is_verbo
                 input_size=X_sequences[0].shape[1],
                 hidden_size=hyper_param_conf['hidden_size'],
                 num_layers=hyper_param_conf['num_layers'],
-                num_classes=4,
+                num_classes=2,
                 cell_type=rnn_cell,
                 dropout=hyper_param_conf['dropout'],
                 hyperparams=hyper_param_conf
@@ -555,7 +559,7 @@ def get_sequences(dataset_id=-1):
         4: "vRouter_vFW"
     }
     output_filename_base = datasets.get(dataset_id, "vALL")
-    path = Path(f"data/VNFCyberData/{output_filename_base}_sequences.npz")
+    path = Path(f"data/VNFCyberData/single-class/{output_filename_base}_sequences.npz")
 
     if not path.exists():
         return None
@@ -614,14 +618,21 @@ def prepare_sequences(
         print(f"X shape: {X.shape}")
         print(f"y shape: {y.shape}")
 
-        feature_mean = X.mean(axis=0)  # Series of length n_features
-        feature_std = X.std(axis=0) + 1e-6  # Series of length n_features
-        X_norm = (X - feature_mean) / feature_std  # DataFrame, same shape as X
+        df_preprocessed = X.copy()
+        df_preprocessed['label'] = y.values if hasattr(y, "values") else np.array(y)
+        df_preprocessed = sample_benign_traffic(
+            df_preprocessed, benign_sampling_ratio=benign_sampling_ratio
+        )
+
+        feature_mean = df_preprocessed.mean(axis=0)  # Series of length n_features
+        feature_std = df_preprocessed.std(axis=0) + 1e-6  # Series of length n_features
+        X_norm = (df_preprocessed - feature_mean) / feature_std  # DataFrame, same shape as X
         X_norm = np.clip(X_norm, -5, 5)
 
         # Combine features and labels into a single DataFrame to allow dataset filtering
-        df_combined = X.copy()
-        df_combined['label'] = y.values if hasattr(y, "values") else np.array(y)
+        df_combined = X_norm.copy()
+        df_combined['label'] = df_preprocessed['label']
+        df_combined['dataset_id'] = X['dataset_id'] if 'dataset_id' in X.columns else -1
 
         # If dataset_ids provided, filter rows by dataset_id column (if present)
         if dataset_ids is not None and 'dataset_id' in df_combined.columns:
@@ -655,11 +666,6 @@ def prepare_sequences(
         # X_train_seq, y_train_seq = create_time_window_sequences(training_ds, window_size_msec, stride_size_msec)
         X_train_seq, y_train_seq = create_fixed_length_sequences(training_ds, sequence_length=1, stride=1,
                                                                  max_sequences=10000000, balance_classes=False)
-        # # create a CSV file for training_ds using X_train_seq and y_train_seq
-        # print(X_train_seq)
-        # training_ds_seq = pd.DataFrame(X_train_seq)
-        # training_ds_seq['label'] = y_train_seq
-        # training_ds_seq.to_csv(f"{output_filename_base}_train_seq.csv", index=False)
 
         validation_ds = pd.DataFrame(X_val)
         validation_ds['label'] = y_val
@@ -668,10 +674,6 @@ def prepare_sequences(
         # X_val_seq, y_val_seq = create_time_window_sequences(validation_ds, window_size_msec, stride_size_msec)
         X_val_seq, y_val_seq = create_fixed_length_sequences(validation_ds, sequence_length=1, stride=1,
                                                              max_sequences=10000000, balance_classes=False)
-        # # create a CSV file for val_ds using X_val_seq and y_val_seq
-        # val_ds_seq = pd.DataFrame(X_val_seq)
-        # val_ds_seq['label'] = y_val_seq
-        # val_ds_seq.to_csv(f"{output_filename_base}_val_seq.csv", index=False)
 
         test_ds = pd.DataFrame(X_test)
         test_ds['label'] = y_test
@@ -680,13 +682,9 @@ def prepare_sequences(
         # X_test_seq, y_test_seq = create_time_window_sequences(test_ds, window_size_msec, stride_size_msec)
         X_test_seq, y_test_seq = create_fixed_length_sequences(test_ds, sequence_length=1, stride=1,
                                                                max_sequences=10000000, balance_classes=False)
-        # # create a CSV file for test_ds using X_test_seq and y_test_seq
-        # test_ds_seq = pd.DataFrame(X_test_seq)
-        # test_ds_seq['label'] = y_test_seq
-        # test_ds_seq.to_csv(f"{output_filename_base}_test_seq.csv", index=False)
 
         np.savez_compressed(
-            f"data/VNFCyberData/{output_sequence_filename_base}_sequences.npz",
+            f"data/VNFCyberData/single-class/{output_sequence_filename_base}_sequences.npz",
             X_train=X_train_seq,
             y_train=y_train_seq,
             X_val=X_val_seq,
@@ -740,7 +738,7 @@ def initialize_model(cell_type="LSTM"):
         input_size=74,  # Example input size, adjust as needed
         hidden_size=128,
         num_layers=2,
-        num_classes=4,  # Example number of classes, adjust as needed
+        num_classes=2,  # Example number of classes, adjust as needed
         cell_type=cell_type,
         dropout=0.05,
         hyperparams=None
