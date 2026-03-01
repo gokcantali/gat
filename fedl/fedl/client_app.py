@@ -260,8 +260,8 @@ local_dp_obj = LocalDpMod(
 # Create the ClientApp
 app = ClientApp(
     client_fn=client_fn,
-    mods=[
-        #secaggplus_mod,  # Comment-out to disable SecAgg+
-        local_dp_obj  # Comment-out to disable DP
-    ],
+    # mods=[
+    #     #secaggplus_mod,  # Comment-out to disable SecAgg+
+    #     local_dp_obj  # Comment-out to disable DP
+    # ],
 )
