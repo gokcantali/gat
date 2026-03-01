@@ -6,19 +6,21 @@ from typing import Optional, Union, Dict
 
 import numpy as np
 import pandas as pd
+from codecarbon import EmissionsTracker
 from flwr.common import FitIns, Parameters, log, FitRes, Scalar, EvaluateRes, \
     parameters_to_ndarrays, GetPropertiesIns, NDArrays, ndarrays_to_parameters
 from flwr.server import SimpleClientManager
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.criterion import Criterion
-from flwr.server.strategy import FedProx
+from flwr.server.strategy import FedProx, FedAvg
 from sklearn.linear_model import LinearRegression
-
+from sklearn.svm import SVR
 
 CF_METHODS = {
     "simple_avg": "CF_SimpleAvg",
     "exp_smooth": "CF_ExpSmooth",
     "lin_reg": "CF_LinRegress",
+    "svr": "CF_SVR",
     "non_cf": "NON_CF"
 }
 
@@ -105,7 +107,7 @@ class SimpleClientManagerWithPrioritizedSampling(SimpleClientManager):
         return [self.clients[cid] for cid in sampled_cids]
 
 
-class FedAvgCF(FedProx):
+class FedAvgCF(FedAvg):
     def __init__(
         self, alpha: float, window: int,
         method: str = "lin_reg", total_rounds: int = 60,
@@ -114,7 +116,7 @@ class FedAvgCF(FedProx):
         proximal_mu: float = 0.10,
         **kwargs
     ):
-        super().__init__(**kwargs, proximal_mu=proximal_mu)
+        super().__init__(**kwargs)#, proximal_mu=proximal_mu)
         self.alpha = alpha
         self.window = window
         self.cid_to_pid: Dict[str, str] = {}  # server-side cache: ClientProxy.cid -> partition-id
@@ -129,6 +131,7 @@ class FedAvgCF(FedProx):
 
         # emission mapping keyed by partition-id (when available), otherwise fallback to client cid
         self.emission_mapping: dict[str, dict[int, float]] = {}
+        self.aggregation_emissions = []
 
         # store selected participants per round as list of partition ids (or fallbacks)
         self.selected_participants_per_round: dict[int, list[str]] = {}
@@ -209,7 +212,11 @@ class FedAvgCF(FedProx):
                 min_num_clients=min_num_clients,
             )
         else:
-            if self.method == "lin_reg":
+            if self.method == "svr":
+                priorities = self._calculate_carbon_based_priorities_using_svr(
+                    server_round=server_round
+                )
+            elif self.method == "lin_reg":
                 priorities = self._calculate_carbon_based_priorities_using_linear_regression(
                     server_round=server_round
                 )
@@ -274,6 +281,15 @@ class FedAvgCF(FedProx):
         results: list[tuple[ClientProxy, FitRes]],
         failures: list[Union[tuple[ClientProxy, FitRes], BaseException]],
     ) -> tuple[Optional[Parameters], dict[str, Scalar]]:
+        # start tracking of carbon emission for the aggregation phase
+        tracker = EmissionsTracker(
+            measure_power_secs=10,
+            experiment_id="2ef8bb00-570a-4110-b59f-68f8b5e5fd2a",
+            save_to_api=False,
+            allow_multiple_runs=True
+        )
+        tracker.start()
+
         for client_proxy, fit_res in results:
             # use partition id (preferred) as the key in emissions mapping
             cid = getattr(client_proxy, "cid", None)
@@ -288,29 +304,35 @@ class FedAvgCF(FedProx):
         if params_agg is None:
             return None, metrics_agg
 
-        # Need current (pre-round) global weights to compute delta
-        if self.previous_parameters is None:
-            # Fallback: no momentum possible without previous params
-            self.previous_parameters = params_agg
-            params_agg_with_momentum = params_agg
-        else:
-            w_prev = parameters_to_ndarrays(self.previous_parameters)
-            w_agg = parameters_to_ndarrays(params_agg)
+        # # Need current (pre-round) global weights to compute delta
+        # if self.previous_parameters is None:
+        #     # Fallback: no momentum possible without previous params
+        #     self.previous_parameters = params_agg
+        #     params_agg_with_momentum = params_agg
+        # else:
+        #     w_prev = parameters_to_ndarrays(self.previous_parameters)
+        #     w_agg = parameters_to_ndarrays(params_agg)
+        #
+        #     # Compute aggregated delta
+        #     delta = [wa - wp for wa, wp in zip(w_agg, w_prev)]
+        #
+        #     # Init velocity on first use
+        #     if self._velocity is None:
+        #         self._velocity = [d.copy() for d in delta]
+        #
+        #     # Momentum update: v = beta*v + delta
+        #     self._velocity = [self.beta * v + d for v, d in zip(self._velocity, delta)]
+        #
+        #     # Apply to weights: w_new = w_prev + server_lr * v
+        #     w_new = [wp + self.server_lr * v for wp, v in zip(w_prev, self._velocity)]
+        #
+        #     params_agg_with_momentum = ndarrays_to_parameters(w_new)
 
-            # Compute aggregated delta
-            delta = [wa - wp for wa, wp in zip(w_agg, w_prev)]
+        params_agg_with_momentum = params_agg  # for now, skip momentum to focus on CF logic
 
-            # Init velocity on first use
-            if self._velocity is None:
-                self._velocity = [d.copy() for d in delta]
-
-            # Momentum update: v = beta*v + delta
-            self._velocity = [self.beta * v + d for v, d in zip(self._velocity, delta)]
-
-            # Apply to weights: w_new = w_prev + server_lr * v
-            w_new = [wp + self.server_lr * v for wp, v in zip(w_prev, self._velocity)]
-
-            params_agg_with_momentum = ndarrays_to_parameters(w_new)
+        aggregation_emissions_for_round = tracker.stop()
+        self.aggregation_emissions.append(aggregation_emissions_for_round)
+        metrics_agg["aggregation_emissions"] = aggregation_emissions_for_round
 
         if self.log_params_and_metrics_fn:
             self.log_params_and_metrics_fn(
@@ -473,6 +495,78 @@ class FedAvgCF(FedProx):
                 )
                 next_round_emission_estimations[cid] = (
                     lin_reg_model.predict(pd.DataFrame([server_round]))[0]
+                )
+
+        log(WARNING, f"Next Round Estimations: {next_round_emission_estimations}")
+        mean_estimation_for_next_round = np.mean(
+            list(next_round_emission_estimations.values())
+        )
+
+        # calculate and return the priorities based on the proportion of the mean estimation
+        # to each of the client's estimation
+        return {
+            cid: mean_estimation_for_next_round / next_round_emission_estimations[cid]
+            for cid in self.emission_mapping.keys()
+        }
+
+    def _calculate_carbon_based_priorities_using_svr(
+        self,
+        server_round: int,
+    ):
+        """uses a Support Vector Regressor (SVR) model for estimating
+        the next round carbon emission and determine the priorities"""
+
+        # calculate the mean emission per round across clients
+        mean_emission_per_round = {}
+        for fl_round in range(1, server_round, 1):
+            measurement_count = 0
+            total_emission_in_round = 0.0
+            for _, emissions in self.emission_mapping.items():
+                emission = emissions.get(fl_round, -1)
+                if not emission or emission <= 0 or math.isnan(emission):
+                    continue
+                measurement_count += 1
+                total_emission_in_round += emission
+            if measurement_count != 0:
+                mean_emission_per_round[fl_round] = (
+                    total_emission_in_round / measurement_count
+                )
+
+        # if no measurement across any rounds of the time window,
+        # return equal priorities
+        if len(mean_emission_per_round.keys()) == 0:
+            return {cid: 1 for cid in self.emission_mapping.keys()}
+
+        # if there is non-measured rounds, take the mean across
+        # measurements across available rounds
+        for fl_round in range(1, server_round, 1):
+            if fl_round not in mean_emission_per_round:
+                mean_emission_per_round[fl_round] = np.mean(
+                    list(mean_emission_per_round.values())
+                )
+
+        # compute the emission estimations for the next round
+        next_round_emission_estimations = {}
+        for cid, emissions in self.emission_mapping.items():
+            emission_values_for_regression = []
+            rounds_for_regression = []
+
+            for fl_round in range(1, server_round, 1):
+                emission = emissions.get(fl_round, 0)
+                if not emission or emission <= 0 or math.isnan(emission):
+                    continue
+                rounds_for_regression.append(fl_round)
+                emission_values_for_regression.append(emission)
+
+            if len(rounds_for_regression) < self.window:
+                next_round_emission_estimations[cid] = mean_emission_per_round[server_round-1]
+            else:
+                svr_model = SVR()
+                svr_model.fit(
+                    pd.DataFrame(rounds_for_regression), emission_values_for_regression
+                )
+                next_round_emission_estimations[cid] = (
+                    svr_model.predict(pd.DataFrame([server_round]))[0]
                 )
 
         log(WARNING, f"Next Round Estimations: {next_round_emission_estimations}")

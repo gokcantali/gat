@@ -243,7 +243,10 @@ def client_fn(context: Context) -> Client:
     partition_id = context.node_config["partition-id"]
 
     # Construct the client
-    flower_client = construct_flower_client_rnn_vnf_datasets(
+    # flower_client = construct_flower_client_rnn_vnf_datasets(
+    #     client_id=partition_id, context=context
+    # )
+    flower_client = construct_flower_client(
         client_id=partition_id, context=context
     )
     return flower_client
@@ -251,14 +254,14 @@ def client_fn(context: Context) -> Client:
 
 # Create an instance of the mod with the required params
 local_dp_obj = LocalDpMod(
-    0.8, 0.2, 0.0001, 0.0001
+    0.9, 0.8, 0.01, 0.02
 )
 
 # Create the ClientApp
 app = ClientApp(
     client_fn=client_fn,
-    # mods=[
-    #     secaggplus_mod,  # Comment-out to disable SecAgg+
-    #     local_dp_obj  # Comment-out to disable DP
-    # ],
+    mods=[
+        #secaggplus_mod,  # Comment-out to disable SecAgg+
+        local_dp_obj  # Comment-out to disable DP
+    ],
 )

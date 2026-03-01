@@ -33,10 +33,10 @@ def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
     return aggregated_metrics
 
 
-NUM_ROUNDS = 50
-METHOD = "simple_avg"
-TRIAL = "Macro Metrics"
-ML_MODEL = "RNN"  # or "GCN"
+NUM_ROUNDS = 20
+METHOD = "svr"
+TRIAL = "Workshop Paper - SVR Trial with DP"
+ML_MODEL = "GCN"  # or "GCN"
 RNN_CELL = "LSTM" # "LSTM" or "RNN" or "GRU
 
 EXPERIMENT_NAME = f"{ML_MODEL}-5Nodes-{NUM_ROUNDS}Rounds-{METHOD}"
