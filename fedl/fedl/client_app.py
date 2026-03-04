@@ -254,7 +254,7 @@ def client_fn(context: Context) -> Client:
 
 # Create an instance of the mod with the required params
 local_dp_obj = LocalDpMod(
-    0.7, 0.4, 0.10, 0.02
+    0.7, 0.4, 0.05, 0.02
 )
 
 # Create the ClientApp
