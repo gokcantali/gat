@@ -35,7 +35,7 @@ def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
 
 NUM_ROUNDS = 20
 METHOD = "non_cf"
-TRIAL = "Workshop Paper - with DP"
+TRIAL = "Workshop Paper - without DP"
 ML_MODEL = "GCN"  # or "GCN"
 RNN_CELL = "LSTM" # "LSTM" or "RNN" or "GRU
 

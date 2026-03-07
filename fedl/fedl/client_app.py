@@ -254,14 +254,14 @@ def client_fn(context: Context) -> Client:
 
 # Create an instance of the mod with the required params
 local_dp_obj = LocalDpMod(
-    0.7, 0.4, 0.05, 0.02
+    1.0, 0.8, 0.10, 0.02
 )
 
 # Create the ClientApp
 app = ClientApp(
     client_fn=client_fn,
-    mods=[
-        #secaggplus_mod,  # Comment-out to disable SecAgg+
-        local_dp_obj  # Comment-out to disable DP
-    ],
+    # mods=[
+    #     #secaggplus_mod,  # Comment-out to disable SecAgg+
+    #     local_dp_obj  # Comment-out to disable DP
+    # ],
 )
