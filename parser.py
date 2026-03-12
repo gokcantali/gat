@@ -1,6 +1,7 @@
 import copy
 import re
 import json
+from typing import Optional
 
 import numpy as np
 
@@ -181,27 +182,40 @@ def print_agg_performance_metrics_into_file(agg_perf_metrics: dict, f_name: str)
 
 """ The following functions are used to parse the performance metrics from files
     which are generated from the FL carbon emissions experiments """
-def parse_file_from_flower_output(f_name: str):
-    content = open(f"./results/FL-carbon-experiments/{f_name}", "r").read().split("[SUMMARY]\n")[1]
+def parse_file_from_flower_output(f_name: str, folder_name: Optional[str] = None):
+    if folder_name is None:
+        folder_name = "FL-carbon-experiments"
+
+    content = open(f"./results/{folder_name}/{f_name}", "r").read()
     content = content.replace("\x1b[92mINFO \x1b[0m:", "")
     content = content.replace("      ", "")
     content = content.replace("\t", "")
 
     metrics = {
         "loss": [], "total_emission": [],
-        "accuracy": [], "precision": [], "f1_score": [], "recall": [],
+        "accuracy": [], "precision": [], "recall": [], "f1_score": [],
+        "training_f1_score": [], "selected_clients": {}, "testing_f1_score": [],
+        "testing_auroc": [], "testing_pr_auc": [], "testing_recall_at_1fpr": [],
     }
     running_time = 0.0
 
     lines = content.split("\n")
     current_metric = None
-    for line in lines:
+    selected_clients_lines = []
+    for index, line in enumerate(lines):
+        if line.lower().startswith("info:flwr:"):
+            # skip the Flower framework info lines
+            continue
+
         if line.lower().startswith("run finished"):
             running_time = re.search("(\d+\.\d+)s", line)[1]
         else:
             for metric in metrics:
-                if metric in line.lower():
+                if f"'{metric}'" in line.lower():
                     current_metric = metric
+                    break
+                elif "loss" in line.lower() and current_metric is None:
+                    current_metric = "loss"
                     break
 
         if (match := re.search("round \d+: (\d+\.\d+(e-\d+)?)", line)) is not None:
@@ -211,13 +225,147 @@ def parse_file_from_flower_output(f_name: str):
             value = match[1]
             metrics[current_metric].append(value)
 
+        if 'Here are the selected clients' in line:
+            selected_clients_lines += [index+1, index+2, index+3]
+
+    for line_index in selected_clients_lines:
+        line = lines[line_index]
+        if (match := re.search("(\d{10,25})", line)) is not None:
+            client_id = match[1]
+            if client_id not in metrics["selected_clients"]:
+                metrics["selected_clients"][client_id] = 0
+            metrics["selected_clients"][client_id] += 1
+
     return {
         "metrics": metrics,
         "running_time": running_time,
     }
 
 
-def parse_and_aggregate_all_carbon_emission_results(rounds: int = 60, trials: int = 20):
+def parse_and_aggregate_all_carbon_emission_results(
+    rounds: int = 60, trials: int = 20,
+    methods: list[str] = ["non_cf", "simple_avg", "exp_smooth", "lin_reg"],
+    trial_prefix="",
+    folder_name=None
+):
+    all_parsed_metrics = []
+    metrics_by_method = {}
+    running_time_by_method = {}
+
+    for method in methods:
+        for trial in range(1, trials+1):
+            trial_text = trial if trial > 9 else f"0{trial}"
+            file_name = f"FL_{rounds}_Rounds_{method}_Algorithm_{trial_prefix}{trial_text}_Trial_Results.txt"
+            parsed_metrics = parse_file_from_flower_output(
+                file_name,
+                folder_name=folder_name
+            )
+            all_parsed_metrics.append(parsed_metrics["metrics"])
+
+            if method not in metrics_by_method:
+                metrics_by_method[method] = {
+                    "loss": {}, "total_emission": {}, "training_f1_score": {},
+                    "accuracy": {}, "precision": {}, "testing_f1_score": {}, "recall": {}, "f1_score": {},
+                    "testing_auroc": {}, "testing_pr_auc": {}, "testing_recall_at_1fpr": {},
+                    "selected_clients": []
+                }
+
+            for metric in metrics_by_method[method]:
+                if metric == 'selected_clients':
+                    metrics_by_method[method][metric].append(parsed_metrics["metrics"]["selected_clients"])
+                    continue
+
+                if metric not in parsed_metrics["metrics"]:
+                    continue
+
+                for ind, value in enumerate(parsed_metrics["metrics"][metric]):
+                    round = ind + 1
+                    round_key = f"round-{round}"
+                    if round_key not in metrics_by_method[method][metric]:
+                        metrics_by_method[method][metric][round_key] = {"values": [], "mean": 0.0, "std": 0.0}
+                    metrics_by_method[method][metric][round_key]["values"].append(float(value))
+
+            if method not in running_time_by_method:
+                running_time_by_method[method] = {"values": [], "mean": 0.0, "std": 0.0}
+            running_time_by_method[method]["values"].append(float(parsed_metrics["running_time"]))
+
+        # calculates the summary statistics for each method and round
+        for metric in metrics_by_method[method]:
+            if metric != "selected_clients":
+                for round_key in metrics_by_method[method][metric]:
+                    values = metrics_by_method[method][metric][round_key]["values"]
+                    mean_value = np.mean(values)
+                    std_value = np.std(values)
+                    metrics_by_method[method][metric][round_key]["mean"] = mean_value
+                    metrics_by_method[method][metric][round_key]["std"] = std_value
+
+        running_time_by_method[method]["mean"] = np.mean(running_time_by_method[method]["values"])
+        running_time_by_method[method]["std"] = np.std(running_time_by_method[method]["values"])
+
+    return {
+        "metrics": metrics_by_method,
+        "running_time": running_time_by_method,
+        "all_parsed_metrics": all_parsed_metrics,
+    }
+
+
+### RNN-related parser functions ###
+def parse_rnn_results_from_file(file_name: str):
+    file_path = f"./results/VNF/{file_name}"
+    with open(file_path, "r") as file:
+        content = file.read()
+
+    rnn_results = []
+    for fold in content.split("Outer Classification Report\n")[1:]:
+        result_str = fold.split("\n")[0].strip().replace("'", "\"")
+        rnn_results.append(json.loads(result_str))
+
+    return rnn_results
+
+
+def aggregate_rnn_results(rnn_results: list[dict]):
+    aggregated_results = {}
+
+    for result in rnn_results:
+        for metric in result:
+            if metric == "accuracy":
+                if metric not in aggregated_results:
+                    aggregated_results[metric] = []
+                aggregated_results[metric].append(result[metric])
+            else:
+                if metric not in aggregated_results:
+                    aggregated_results[metric] = {}
+                for sub_metric in result[metric]:
+                    if sub_metric not in aggregated_results[metric]:
+                        aggregated_results[metric][sub_metric] = []
+                    aggregated_results[metric][sub_metric].append(result[metric][sub_metric])
+
+    return aggregated_results
+
+
+def summarize_aggregated_rnn_results(aggregated_results: dict):
+    summary = {}
+
+    for metric, values in aggregated_results.items():
+        if isinstance(values, list):
+            summary[metric] = {
+                "mean": np.mean(values),
+                "std": np.std(values)
+            }
+
+        else:
+            summary[metric] = {}
+            for sub_metric, sub_values in values.items():
+                summary[metric][sub_metric] = {
+                    "mean": np.mean(sub_values),
+                    "std": np.std(sub_values)
+                }
+
+    return summary
+
+
+# VNF-related parser functions
+def parse_and_aggregate_lstm_vnf_results(rounds: int = 100, trials: int = 20):
     METHODS = ["non_cf", "simple_avg", "exp_smooth", "lin_reg"]
     metrics_by_method = {}
     running_time_by_method = {}
@@ -225,13 +373,17 @@ def parse_and_aggregate_all_carbon_emission_results(rounds: int = 60, trials: in
     for method in METHODS:
         for trial in range(1, trials+1):
             trial_text = trial if trial > 9 else f"0{trial}"
-            file_name = f"FL_{rounds}_Rounds_{method}_Algorithm_Trial_{trial_text}_Results.txt"
-            parsed_metrics = parse_file_from_flower_output(file_name)
+            file_name = f"FL_{rounds}_Rounds_{method}_Algorithm_LSTM_VNF_v2_{trial_text}_Trial_Results.txt"
+            parsed_metrics = parse_file_from_flower_output(file_name, folder_name="VNF")
 
             if method not in metrics_by_method:
                 metrics_by_method[method] = {
-                    "loss": {}, "total_emission": {},
-                    "accuracy": {}, "precision": {}, "f1_score": {}, "recall": {},
+                    "validation_loss": {},
+                    "total_emission": {},
+                    "testing_f1_score": {},
+                    "testing_auroc": {},
+                    "testing_pr_auc": {},
+                    "testing_recall_at_1fpr": {},
                 }
 
             for metric in metrics_by_method[method]:
@@ -251,12 +403,13 @@ def parse_and_aggregate_all_carbon_emission_results(rounds: int = 60, trials: in
 
         # calculates the summary statistics for each method and round
         for metric in metrics_by_method[method]:
-            for round_key in metrics_by_method[method][metric]:
-                values = metrics_by_method[method][metric][round_key]["values"]
-                mean_value = np.mean(values)
-                std_value = np.std(values)
-                metrics_by_method[method][metric][round_key]["mean"] = mean_value
-                metrics_by_method[method][metric][round_key]["std"] = std_value
+            if metric != "selected_clients":
+                for round_key in metrics_by_method[method][metric]:
+                    values = metrics_by_method[method][metric][round_key]["values"]
+                    mean_value = np.mean(values)
+                    std_value = np.std(values)
+                    metrics_by_method[method][metric][round_key]["mean"] = mean_value
+                    metrics_by_method[method][metric][round_key]["std"] = std_value
 
         running_time_by_method[method]["mean"] = np.mean(running_time_by_method[method]["values"])
         running_time_by_method[method]["std"] = np.std(running_time_by_method[method]["values"])
@@ -265,7 +418,6 @@ def parse_and_aggregate_all_carbon_emission_results(rounds: int = 60, trials: in
         "metrics": metrics_by_method,
         "running_time": running_time_by_method,
     }
-
 
 if __name__ == "__main__":
     # input_file_name = "experiment/train-worker0-test-worker0-FL-60-CF-ExpSmooth.txt"
@@ -317,7 +469,7 @@ if __name__ == "__main__":
     #             print_agg_performance_metrics_into_file(aggregated_perf_metrics, output_file_name)
 
     results = parse_and_aggregate_all_carbon_emission_results(
-        rounds=60,
+        rounds=50,
         trials=20
     )
     print(results)
