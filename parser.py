@@ -192,7 +192,8 @@ def parse_file_from_flower_output(f_name: str, folder_name: Optional[str] = None
     content = content.replace("\t", "")
 
     metrics = {
-        "loss": [], "total_emission": [],
+        "loss": [], "total_emission": [], "train_accuracy": [], "train_f1": [],
+        "train_loss": [],
         "accuracy": [], "precision": [], "recall": [], "f1_score": [],
         "training_f1_score": [], "selected_clients": {}, "testing_f1_score": [],
         "testing_auroc": [], "testing_pr_auc": [], "testing_recall_at_1fpr": [],

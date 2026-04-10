@@ -9,8 +9,9 @@ from matplotlib.patches import Patch
 
 FONT_SIZE = 20
 COLORS = [
-    "blue",
     "red",
+    "green",
+    "blue",
     "cyan",
     "orange",
     "purple",
@@ -18,6 +19,7 @@ COLORS = [
     "pink",
     "gray",
 ]
+MARKERS = ["o", "^", "*", "D", "s", "v", "P", "x", "h"]
 
 plt.rcParams.update({
     "text.usetex": True,
@@ -76,7 +78,7 @@ def plot_dp_related_chart(data, title, filename, show_ylabel=True, num_rounds=5)
     ax.set_title(title)
     ax.set_xlabel("FL Rounds")
     if show_ylabel:
-        ax.set_ylabel("F1-Score (\%)")
+        ax.set_ylabel("F1-Score")
     ax.grid(True, linewidth=0.6, alpha=0.5)
     ax.legend(loc="lower right")
     ax.set_xlim(1, num_rounds)
@@ -197,11 +199,16 @@ def _collect_experiment_results_from_metric_data(data_key: str, experiment_resul
         round += 1
 
 
-def plot_carbon_related_chart(series_list, label_list, title, filename):
+def plot_carbon_related_chart(
+    series_list, label_list, title, filename,
+    num_rounds=50, ylabel="F1-Score", transformation_fn=None
+):
     """
     This function plots graphs related to the results of carbon emission experiments.
     It uses matplotlib to create a plot with different colors for different epsilon values.
     """
+    colors = ["#1f77b4", "#ff7f0E", "#2ca02c", "#d62728", "cyan", "purple", "brown", "pink", "gray"]
+    markers = ["o", "s", "^", "D", "*", "v", "P", "x", "h"]
 
     # Set font properties
     plt.rc('font', family='helvetica', size=FONT_SIZE)
@@ -212,53 +219,74 @@ def plot_carbon_related_chart(series_list, label_list, title, filename):
     plt.rc('legend', fontsize=FONT_SIZE)
 
     # Data for plotting
-    t = np.arange(1, 61, 1)
+    t = np.arange(1, num_rounds+1, 1)
 
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(7, 5))
 
+    min_y, max_y = 100.0, 0.0
     for index, series in enumerate(series_list):
         # Scatter plot for each series
+        data = series
+        if transformation_fn is not None:
+            data = list(map(transformation_fn, data))
         ax.plot(
-            t, series,
-            color=COLORS[index], label=label_list[index], linewidth=3
+            t, data,
+            color=colors[index], label=label_list[index], linewidth=3,
+            marker=markers[index], markersize=4
         )
+        if min(data) < min_y:
+            min_y = float(min(data))
+        if max(data) > max_y:
+            max_y = float(max(data))
 
     ax.legend(loc ='lower right')
 
-    ax.set(xlabel='FL Round', ylabel='F1-Score (\%)',
+    ax.set(xlabel='FL Round', ylabel=ylabel,
            title=title)
     ax.grid(ls=':')
+    ax.set_ylim([min_y * 0.92, max_y * 1.08])
     file_path = f"results/FL-carbon-experiments/{filename}"
-    plt.savefig(file_path, dpi=300)
+    plt.savefig(file_path, dpi=900, bbox_inches="tight", transparent=True)
+    plt.close(fig)
 
 
-def plot_all_fl_carbon_charts():
+def plot_all_fl_carbon_charts(
+    num_rounds=50, results=None,
+    target_metric="f1_score", is_cumulative=False, ylabel="F1-Score",
+    transformation_fn=None
+):
     METHOD_TO_LABEL_MAPPING = {
-        "non_cf": "No Optimization",
+        "non_cf": "Baseline FL",
         "simple_avg": "Simple Averaging",
         "exp_smooth": "Exponential Smoothing",
         "lin_reg": "Linear Regression",
+        "svr": "Carbon-aware FL",
     }
-    TARGET_METRIC = "f1_score"
 
-    results = json.loads(open(
-        'results/FL-carbon-experiments/FL-60-rounds-carbon-experiment-results.json', 'r'
-    ).read())
+    if results is None:
+        results = json.loads(open(
+            f'results/FL-carbon-experiments/FL-{num_rounds}-rounds-carbon-experiment-results.json', 'r'
+        ).read())
 
     series_list = []
     label_list = []
     for method in results["metrics"]:
-        round_scores = [0] * 60
-        for round_txt in results["metrics"][method][TARGET_METRIC]:
+        round_scores = [0] * num_rounds
+        for round_txt in results["metrics"][method][target_metric]:
             round_ind = int(round_txt.split("-")[1])
-            round_scores[round_ind-1] = results["metrics"][method][TARGET_METRIC][round_txt]["mean"]
+            round_scores[round_ind-1] = results["metrics"][method][target_metric][round_txt]["mean"]
+            if is_cumulative and round_ind > 1:
+                round_scores[round_ind-1] += round_scores[round_ind-2]
 
         series_list.append(round_scores)
         label_list.append(METHOD_TO_LABEL_MAPPING[method])
 
     title = ""
-    filename = "FL-60-Rounds-Carbon-Reduction-Methods.pdf"
-    plot_carbon_related_chart(series_list, label_list, title, filename)
+    filename = f"FL-{num_rounds}-Rounds-Carbon-Reduction-Methods.pdf"
+    plot_carbon_related_chart(
+        series_list, label_list, title, filename,
+        num_rounds=num_rounds, ylabel=ylabel, transformation_fn=transformation_fn
+    )
 
 
 def plot_boxplots_for_fairness_analysis():
