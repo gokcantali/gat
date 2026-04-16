@@ -33,11 +33,11 @@ def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
     return aggregated_metrics
 
 
-NUM_ROUNDS = 20
+NUM_ROUNDS = 10
 METHOD = "non_cf"
-TRIAL = "Workshop Paper - without DP"
-ML_MODEL = "GCN"  # or "GCN"
-RNN_CELL = "LSTM" # "LSTM" or "RNN" or "GRU
+TRIAL = "TestRun"
+ML_MODEL = "GCN"  # or "RNN"
+RNN_CELL = "LSTM" # "LSTM" or "RNN" or "GRU, only applicable if ML_MODEL is "RNN"
 
 EXPERIMENT_NAME = f"{ML_MODEL}-5Nodes-{NUM_ROUNDS}Rounds-{METHOD}"
 EXPERIMENT_ID = mlflow.set_experiment(

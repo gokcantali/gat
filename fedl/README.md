@@ -24,6 +24,17 @@ you can take a look at the following documentation that explains the Flower arch
 
 To successfully run the FL part, you will need to follow multiple steps:
 
+### Run the MLflow Tracking Server
+
+This project relies on _MLflow_ to log and visualize the training metrics and parameters.
+Without the MLflow Tracking Server, the FL aggregation process may get stuck and not proceed.
+
+To run the MLflow Tracking Server, you can execute the following command in a separate shell session:
+
+```bash
+mlflow server --host localhost:8080
+```
+
 ### Start SuperLink on the Server Side
 
 First, you should spin up the long-living server-app process which is called SuperLink:
